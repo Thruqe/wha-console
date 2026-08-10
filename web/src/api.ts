@@ -84,6 +84,15 @@ export async function checkAuth(): Promise<boolean> {
     return tryRefresh();
 }
 
+export async function logout(): Promise<void> {
+    try {
+        await request("/auth/logout", { method: "POST" });
+    } finally {
+        setAccessToken(null);
+        lastServerCheck = 0; // force a real check next time, don't trust stale state
+    }
+}
+
 export const api = {
     signup: (email: string, username: string, password: string) =>
         request("/auth/signup", { method: "POST", body: JSON.stringify({ email, username, password }) }),
