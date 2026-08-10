@@ -1,14 +1,12 @@
 package schema
 
 import (
-	"fmt"
-
 	"github.com/go-webauthn/webauthn/webauthn"
 )
 
 // WebAuthnID, WebAuthnName, etc. make User satisfy webauthn.User.
 func (u User) WebAuthnID() []byte {
-	return fmt.Appendf(nil, "%d", u.ID)
+	return []byte(u.ID)
 }
 
 func (u User) WebAuthnName() string {

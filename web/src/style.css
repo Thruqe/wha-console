@@ -559,3 +559,62 @@ button.secondary {
   display: flex;
   padding: 4px;
 }
+
+.notfound-wrapper {
+  display: flex;
+  min-height: 100svh;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.notfound-content {
+  max-width: 440px;
+}
+
+.notfound-code {
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  margin-bottom: 28px;
+}
+
+.notfound-content h1 {
+  font-size: 72px;
+  letter-spacing: -2px;
+  margin: 0 0 12px;
+  line-height: 1;
+}
+
+.notfound-content .gradient {
+  background: linear-gradient(90deg, var(--accent) 0%, #ff8a4c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.notfound-content p {
+  color: var(--text);
+  font-size: 16px;
+  margin-bottom: 32px;
+}
+
+.notfound-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.notfound-actions button.primary,
+.notfound-actions button.secondary {
+  width: auto;
+}

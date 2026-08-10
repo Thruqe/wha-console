@@ -4,6 +4,7 @@ package auth
 import (
 	"net/http"
 	"strings"
+	"wha-console/schema"
 
 	"github.com/labstack/echo/v4"
 )
@@ -29,6 +30,14 @@ func (h *AuthHandler) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid or expired token"})
 		}
 
+		// Confirm the user still actually exists — a valid signature alone
+		// isn't enough if the DB was wiped or the account was deleted.
+		var exists int64
+		h.DB.Model(&schema.User{}).Where("id = ?", claims.UserID).Count(&exists)
+		if exists == 0 {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "user no longer exists"})
+		}
+
 		c.Set(UserIDContextKey, claims.UserID)
 		return next(c)
 	}
@@ -36,7 +45,7 @@ func (h *AuthHandler) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 
 // UserIDFromContext is a small helper for handlers to pull the authenticated
 // user ID out of context without repeating the type assertion everywhere.
-func UserIDFromContext(c echo.Context) (uint, bool) {
-	id, ok := c.Get(UserIDContextKey).(uint)
+func UserIDFromContext(c echo.Context) (string, bool) {
+	id, ok := c.Get(UserIDContextKey).(string)
 	return id, ok
 }

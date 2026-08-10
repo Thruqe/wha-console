@@ -121,7 +121,7 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 
 // issueTokensAndRespond generates both tokens, sets the refresh token as an
 // httpOnly cookie, and returns the access token in the JSON body.
-func (h *AuthHandler) IssueTokensAndRespond(c echo.Context, userID uint) error {
+func (h *AuthHandler) IssueTokensAndRespond(c echo.Context, userID string) error {
 	accessToken, err := GenerateAccessToken(userID, h.Secret)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to issue access token"})
@@ -143,4 +143,12 @@ func (h *AuthHandler) IssueTokensAndRespond(c echo.Context, userID uint) error {
 	})
 
 	return c.JSON(http.StatusOK, map[string]string{"access_token": accessToken})
+}
+
+func (h *AuthHandler) Me(c echo.Context) error {
+	userID, ok := UserIDFromContext(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+	return c.JSON(http.StatusOK, map[string]any{"user_id": userID})
 }

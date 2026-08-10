@@ -37,7 +37,7 @@ func (j *JSON) Scan(value any) error {
 
 type Session struct {
 	ID         uint           `gorm:"primaryKey" json:"id"`
-	UserID     uint           `gorm:"index;not null" json:"user_id"`
+	UserID     string         `gorm:"index;not null" json:"user_id"`
 	User       User           `gorm:"foreignKey:UserID" json:"-"` // back-reference, avoid serializing to prevent cycles
 	Name       string         `gorm:"not null" json:"name"`
 	Status     string         `gorm:"index;not null;default:'stopped'" json:"status"`

@@ -1,9 +1,30 @@
 import "./style.css";
-import { registerRoute, startRouter } from "./router";
+import { registerRoute, startRouter, navigate } from "./router";
 import { renderAuthView } from "./views/auth";
 import { renderDashboardView } from "./views/dashboard";
+import { renderPasskeyPromptView } from "./views/passkey-prompt";
+import { renderNotFoundView } from "./views/not-found";
+import { checkAuth } from "./api";
 
 registerRoute("/login", renderAuthView);
 registerRoute("/dashboard", renderDashboardView);
+registerRoute("/passkey-prompt", renderPasskeyPromptView);
+registerRoute("/404", renderNotFoundView);
 
-startRouter();
+async function bootstrap() {
+    const isAuthed = await checkAuth();
+    const currentHash = window.location.hash.slice(1);
+
+    // If already logged in and sitting on /login (or no hash), send to dashboard
+    if (isAuthed && (currentHash === "" || currentHash === "/login")) {
+        navigate("/dashboard");
+    }
+    // If not logged in and trying to hit a protected route, send to login
+    if (!isAuthed && currentHash === "/dashboard") {
+        navigate("/login");
+    }
+
+    startRouter();
+}
+
+bootstrap();

@@ -1,5 +1,8 @@
 import { createElement } from "lucide";
-import { LogIn, UserPlus, Eye, EyeOff, Terminal, Mail, Lock, Fingerprint } from "lucide";
+import {
+    LogIn, UserPlus, Eye, EyeOff, Terminal, Mail, Lock, Fingerprint,
+    TriangleAlert, ArrowLeft,
+} from "lucide";
 
 export function icon(iconNode: any, options: { size?: number; class?: string } = {}) {
     const svg = createElement(iconNode);
@@ -9,4 +12,4 @@ export function icon(iconNode: any, options: { size?: number; class?: string } =
     return svg.outerHTML;
 }
 
-export { LogIn, UserPlus, Eye, EyeOff, Terminal, Mail, Lock, Fingerprint };
+export { LogIn, UserPlus, Eye, EyeOff, Terminal, Mail, Lock, Fingerprint, TriangleAlert, ArrowLeft };

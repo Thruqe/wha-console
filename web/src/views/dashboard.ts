@@ -1,8 +1,9 @@
-import { getAccessToken } from "../api";
+import { checkAuth } from "../api";
 import { navigate } from "../router";
 
-export function renderDashboardView() {
-    if (!getAccessToken()) {
+export async function renderDashboardView() {
+    const isAuthed = await checkAuth();
+    if (!isAuthed) {
         navigate("/login");
         return;
     }

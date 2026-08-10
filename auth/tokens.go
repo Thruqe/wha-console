@@ -19,12 +19,12 @@ const (
 
 // AccessClaims is embedded in the JWT payload.
 type AccessClaims struct {
-	UserID uint `json:"user_id"`
+	UserID string `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
 // GenerateAccessToken issues a short-lived, stateless JWT.
-func GenerateAccessToken(userID uint, secret []byte) (string, error) {
+func GenerateAccessToken(userID string, secret []byte) (string, error) {
 	claims := AccessClaims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -61,7 +61,7 @@ func generateOpaqueToken() (string, error) {
 }
 
 // IssueRefreshToken creates a new refresh token row in the DB and returns the raw token.
-func IssueRefreshToken(db *gorm.DB, userID uint) (string, error) {
+func IssueRefreshToken(db *gorm.DB, userID string) (string, error) {
 	raw, err := generateOpaqueToken()
 	if err != nil {
 		return "", err

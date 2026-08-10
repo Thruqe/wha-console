@@ -60,6 +60,7 @@ func main() {
 	authGroup := api.Group("/auth")
 	authGroup.POST("/signup", authHandler.Signup)
 	authGroup.POST("/login", authHandler.Login)
+	authGroup.GET("/me", authHandler.Me, authHandler.RequireAuth)
 	authGroup.POST("/refresh", authHandler.Refresh)
 	authGroup.POST("/logout", authHandler.Logout)
 

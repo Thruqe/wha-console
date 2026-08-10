@@ -17,7 +17,7 @@ export function navigate(path: string) {
 
 function resolveRoute() {
     const path = window.location.hash.slice(1) || "/login";
-    const handler = routes[path] || routes["/login"];
+    const handler = routes[path] || routes["/404"];
     if (!handler) {
         throw new Error(`No route handler found for path: ${path} and fallback '/login' is unregistered.`);
     }

@@ -10,7 +10,7 @@ import (
 // A user can register multiple (phone, laptop, security key, etc).
 type Credential struct {
 	ID              uint           `gorm:"primaryKey" json:"id"`
-	UserID          uint           `gorm:"index;not null" json:"user_id"`
+	UserID          string         `gorm:"index;not null" json:"user_id"`
 	CredentialID    []byte         `gorm:"uniqueIndex;not null" json:"-"` // WebAuthn credential ID (raw bytes)
 	PublicKey       []byte         `gorm:"not null" json:"-"`             // COSE-encoded public key
 	AttestationType string         `json:"attestation_type"`

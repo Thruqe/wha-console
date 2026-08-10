@@ -1,18 +1,30 @@
+import { decodeJwtExpiry } from "./jwt";
+
 const API_BASE = "/api";
 
 let accessToken: string | null = localStorage.getItem("access_token");
+let tokenExpiresAt: number | null = accessToken ? decodeJwtExpiry(accessToken) : null;
+let lastServerCheck = 0;
+const SERVER_CHECK_INTERVAL = 5 * 60 * 1000; // 5 mins
+
 
 export function setAccessToken(token: string | null) {
     accessToken = token;
     if (token) {
         localStorage.setItem("access_token", token);
+        tokenExpiresAt = decodeJwtExpiry(token);
     } else {
+        tokenExpiresAt = null;
         localStorage.removeItem("access_token");
     }
 }
 
 export function getAccessToken() {
     return accessToken;
+}
+
+function isTokenFresh(): boolean {
+    return !!accessToken && !!tokenExpiresAt && Date.now() < tokenExpiresAt;
 }
 
 async function request(path: string, options: RequestInit = {}) {
@@ -27,7 +39,7 @@ async function request(path: string, options: RequestInit = {}) {
     const res = await fetch(`${API_BASE}${path}`, {
         ...options,
         headers,
-        credentials: "include", // send/receive httpOnly refresh cookie
+        credentials: "include",
     });
 
     const body = await res.json().catch(() => ({}));
@@ -35,6 +47,41 @@ async function request(path: string, options: RequestInit = {}) {
         throw new Error(body.error || `Request failed: ${res.status}`);
     }
     return body;
+}
+
+async function tryRefresh(): Promise<boolean> {
+    try {
+        const res = await fetch(`${API_BASE}/auth/refresh`, {
+            method: "POST",
+            credentials: "include",
+        });
+        if (!res.ok) return false;
+        const body = await res.json();
+        setAccessToken(body.access_token);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+
+export async function checkAuth(): Promise<boolean> {
+    const dueForServerCheck = Date.now() - lastServerCheck > SERVER_CHECK_INTERVAL;
+
+    if (!dueForServerCheck && isTokenFresh()) {
+        return true;
+    }
+
+    if (accessToken) {
+        try {
+            await request("/auth/me");
+            lastServerCheck = Date.now();
+            return true;
+        } catch {
+            // token invalid, expired, or user no longer exists
+        }
+    }
+    return tryRefresh();
 }
 
 export const api = {
