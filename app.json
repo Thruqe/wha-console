@@ -1,0 +1,62 @@
+{
+  "name": "WHA-Console",
+  "description": "Super simple console management system for managing multiple whatsrook sessions.",
+  "keywords": [
+    "golang",
+    "webauthn",
+    "whatsrook",
+    "console",
+    "docker"
+  ],
+  "website": "https://github.com/Thruqe/wha-console",
+  "repository": "https://github.com/Thruqe/wha-console",
+  "stack": "container",
+  "env": {
+    "DEV_MODE": {
+      "description": "Enable development mode.",
+      "value": "false",
+      "required": false
+    },
+    "DB_DRIVER": {
+      "description": "Database driver (e.g., sqlite).",
+      "value": "sqlite",
+      "required": false
+    },
+    "DB_DSN": {
+      "description": "Database connection string or filename.",
+      "value": "wha-console.db",
+      "required": false
+    },
+    "JWT_SECRET": {
+      "description": "Secret key used for signing JWT tokens.",
+      "generator": "secret",
+      "required": true
+    },
+    "REDIS_ADDR": {
+      "description": "Address of Redis instance (optional depending on setup).",
+      "value": "localhost:6379",
+      "required": false
+    },
+    "WEBAUTHN_RP_ID": {
+      "description": "Relying Party ID for WebAuthn/Passkeys (domain name without protocol/port).",
+      "value": "localhost",
+      "required": true
+    },
+    "WEBAUTHN_RP_DISPLAY_NAME": {
+      "description": "Relying Party display name for WebAuthn prompts.",
+      "value": "WHA-Console",
+      "required": false
+    },
+    "WEBAUTHN_RP_ORIGINS": {
+      "description": "Comma-separated list of allowed origin URLs for WebAuthn authentication.",
+      "value": "http://localhost:8080",
+      "required": true
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - DEV_MODE=${DEV_MODE:-true}
+      - DB_DRIVER=${DB_DRIVER:-sqlite}
+      - DB_DSN=${DB_DSN:-/app/wha-console.db}
+      - PORT=${PORT:-8080}
+      - JWT_SECRET=${JWT_SECRET:-change-me-to-a-long-random-string}
+      - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-localhost}
+      - WEBAUTHN_RP_DISPLAY_NAME=${WEBAUTHN_RP_DISPLAY_NAME:-WHA-Console}
+      - WEBAUTHN_RP_ORIGINS=${WEBAUTHN_RP_ORIGINS:-http://localhost:8080}
+    volumes:
+      - app-data:/app
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  app-data:
+  redis-data:
