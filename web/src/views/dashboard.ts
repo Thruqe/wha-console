@@ -1,34 +1,37 @@
-import { checkAuth, logout } from "../api";
+import { checkAuth, logout, api, runProcess, stopProcess } from "../api";
 import { navigate } from "../router";
 import { icon, Terminal, Plus, Play, Square, Trash2, LogOut, Server } from "../icons";
-
-type ProcessStatus = "running" | "stopped" | "crashed";
+import { openProcessConfigModal } from "../components/process-config-modal";
 
 interface ProcessItem {
-    id: string;
-    name: string;
-    status: ProcessStatus;
-    uptime: string;
+  id: number;
+  name: string;
+  phone_masked: string;
+  auth_type: string;
+  client: string;
+  status: "running" | "stopped" | "crashed";
+  created_at: string;
 }
 
-// Stub data — will be replaced by api.listProcesses() once the backend is real.
-const STUB_PROCESSES: ProcessItem[] = [
-    { id: "1", name: "worker-main", status: "running", uptime: "2h 14m" },
-    { id: "2", name: "cron-sync", status: "stopped", uptime: "—" },
-    { id: "3", name: "api-gateway", status: "crashed", uptime: "—" },
-];
-
 export async function renderDashboardView() {
-    const isAuthed = await checkAuth();
-    if (!isAuthed) {
-        navigate("/login");
-        return;
-    }
+  const isAuthed = await checkAuth();
+  if (!isAuthed) {
+    navigate("/login");
+    return;
+  }
 
-    const app = document.getElementById("app")!;
-    const processes = STUB_PROCESSES; // swap for: await api.listProcesses()
+  const app = document.getElementById("app")!;
+  app.innerHTML = `<div class="dash-wrapper"><div class="dash-main"><p>Loading…</p></div></div>`;
 
-    app.innerHTML = `
+  let processes: ProcessItem[] = [];
+  try {
+    processes = await api.listProcesses();
+  } catch (err) {
+    app.innerHTML = `<div class="dash-wrapper"><div class="dash-main"><p class="error">Failed to load processes: ${(err as Error).message}</p></div></div>`;
+    return;
+  }
+
+  app.innerHTML = `
     <div class="dash-wrapper">
       <div class="dash-header">
         <div class="dash-logo">${icon(Terminal, { size: 20 })} wha-console</div>
@@ -55,40 +58,71 @@ export async function renderDashboardView() {
     </div>
   `;
 
-    document.getElementById("logout-btn")!.addEventListener("click", async () => {
-        await logout();
-        navigate("/login");
-    })
+  document.getElementById("logout-btn")!.addEventListener("click", async () => {
+    await logout();
+    navigate("/login");
+  });
 
-    document.getElementById("new-process-btn")!.addEventListener("click", () => {
-        alert("Process creation coming soon");
+  document.getElementById("new-process-btn")!.addEventListener("click", () => {
+    openProcessConfigModal(() => renderDashboardView());
+  });
+
+  document.getElementById("empty-new-process-btn")?.addEventListener("click", () => {
+    openProcessConfigModal(() => renderDashboardView());
+  });
+
+  processes.forEach((p) => {
+    const card = document.querySelector(`.process-card[data-id="${p.id}"]`);
+    card?.addEventListener("click", () => navigate(`/processes/${p.id}`));
+
+    document.getElementById(`start-${p.id}`)?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget as HTMLButtonElement;
+      btn.disabled = true;
+      try {
+        await runProcess(String(p.id));
+        renderDashboardView();
+      } catch (err) {
+        alert((err as Error).message);
+        btn.disabled = false;
+      }
     });
 
-    processes.forEach((p) => {
-        document.getElementById(`start-${p.id}`)?.addEventListener("click", () => {
-            console.log("start", p.id);
-        });
-        document.getElementById(`stop-${p.id}`)?.addEventListener("click", () => {
-            console.log("stop", p.id);
-        });
-        document.getElementById(`delete-${p.id}`)?.addEventListener("click", () => {
-            console.log("delete", p.id);
-        });
+    document.getElementById(`stop-${p.id}`)?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget as HTMLButtonElement;
+      btn.disabled = true;
+      try {
+        await stopProcess(String(p.id));
+        renderDashboardView();
+      } catch (err) {
+        alert((err as Error).message);
+        btn.disabled = false;
+      }
     });
+
+    document.getElementById(`delete-${p.id}`)?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      console.log("delete", p.id);
+    });
+  });
 }
 
 function renderEmptyState(): string {
-    return `
+  return `
     <div class="empty-state">
       <div class="icon-wrap">${icon(Server, { size: 28 })}</div>
       <h2>No processes yet</h2>
       <p>Start your first process to see it here.</p>
+      <button type="button" class="primary" id="empty-new-process-btn" style="width: auto; margin-top: 16px; display: inline-flex; align-items: center; gap: 8px;">
+        ${icon(Plus, { size: 16 })} New process
+      </button>
     </div>
   `;
 }
 
 function renderProcessGrid(processes: ProcessItem[]): string {
-    return `
+  return `
     <div class="process-grid">
       ${processes.map(renderProcessCard).join("")}
     </div>
@@ -96,18 +130,18 @@ function renderProcessGrid(processes: ProcessItem[]): string {
 }
 
 function renderProcessCard(p: ProcessItem): string {
-    return `
-    <div class="process-card">
+  return `
+    <div class="process-card" data-id="${p.id}" style="cursor: pointer;">
       <div class="process-card-header">
         <div class="process-name">${icon(Server, { size: 16 })} ${p.name}</div>
         <span class="status-pill ${p.status}">${p.status}</span>
       </div>
-      <div class="process-meta">Uptime: ${p.uptime}</div>
+      <div class="process-meta">${p.phone_masked} · ${p.client}</div>
       <div class="process-actions">
         ${p.status === "running"
-            ? `<button id="stop-${p.id}">${icon(Square, { size: 14 })} Stop</button>`
-            : `<button id="start-${p.id}">${icon(Play, { size: 14 })} Start</button>`
-        }
+      ? `<button id="stop-${p.id}">${icon(Square, { size: 14 })} Stop</button>`
+      : `<button id="start-${p.id}">${icon(Play, { size: 14 })} Start</button>`
+    }
         <button id="delete-${p.id}">${icon(Trash2, { size: 14 })} Delete</button>
       </div>
     </div>

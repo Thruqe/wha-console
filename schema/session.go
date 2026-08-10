@@ -1,49 +1,56 @@
 package schema
 
 import (
-	"database/sql/driver"
-	"encoding/json"
-	"errors"
 	"time"
 
 	"gorm.io/gorm"
 )
 
-// JSON is a portable JSON column type that works on both Postgres and SQLite.
-type JSON map[string]any
+type AuthType string
 
-func (j JSON) Value() (driver.Value, error) {
-	if j == nil {
-		return nil, nil
-	}
-	return json.Marshal(j)
-}
+const (
+	AuthTypePair AuthType = "pair"
+	AuthTypeQR   AuthType = "qr"
+)
 
-func (j *JSON) Scan(value any) error {
-	if value == nil {
-		*j = JSON{}
-		return nil
-	}
-	bytes, ok := value.([]byte)
-	if !ok {
-		if s, ok := value.(string); ok {
-			bytes = []byte(s)
-		} else {
-			return errors.New("failed to scan JSON value")
-		}
-	}
-	return json.Unmarshal(bytes, j)
-}
+type ClientType string
+
+const (
+	ClientChrome  ClientType = "chrome"
+	ClientAndroid ClientType = "android"
+	ClientIOS     ClientType = "ios"
+)
 
 type Session struct {
-	ID         uint           `gorm:"primaryKey" json:"id"`
-	UserID     string         `gorm:"index;not null" json:"user_id"`
-	User       User           `gorm:"foreignKey:UserID" json:"-"` // back-reference, avoid serializing to prevent cycles
-	Name       string         `gorm:"not null" json:"name"`
-	Status     string         `gorm:"index;not null;default:'stopped'" json:"status"`
-	Settings   JSON           `gorm:"type:jsonb" json:"settings"`
-	Activities JSON           `gorm:"type:jsonb" json:"activities"`
-	CreatedAt  time.Time      `json:"creation"`
-	UpdatedAt  time.Time      `json:"updated_at"`
-	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
+	ID     uint   `gorm:"primaryKey" json:"id"`
+	UserID string `gorm:"index;not null;uniqueIndex:idx_user_session_name" json:"user_id"`
+	User   User   `gorm:"foreignKey:UserID" json:"-"`
+
+	Name        string     `gorm:"not null;uniqueIndex:idx_user_session_name" json:"name"`
+	PhoneNumber string     `gorm:"not null" json:"-"` // never serialized wholesale — expose last 4 via a method
+	AuthType    AuthType   `gorm:"not null" json:"auth_type"`
+	Client      ClientType `gorm:"not null" json:"client"`
+	DatabaseURL string     `gorm:"not null" json:"-"` // sensitive — never serialize
+
+	Status string `gorm:"index;not null;default:'stopped'" json:"status"` // running, stopped, crashed
+
+	Verbose   bool `gorm:"default:false" json:"verbose"`
+	NoSkipOld bool `gorm:"default:false" json:"no_skip_old"`
+
+	Settings   JSON `gorm:"type:jsonb" json:"settings"`
+	Activities JSON `gorm:"type:jsonb" json:"activities"`
+
+	PID *int `json:"-" gorm:"column:pid"`
+
+	CreatedAt time.Time      `json:"creation"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+// PhoneNumberMasked returns only the last 4 digits, safe for the dashboard card.
+func (s Session) PhoneNumberMasked() string {
+	if len(s.PhoneNumber) < 4 {
+		return "••••"
+	}
+	return "•••• " + s.PhoneNumber[len(s.PhoneNumber)-4:]
 }

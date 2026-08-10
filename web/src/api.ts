@@ -93,6 +93,7 @@ export async function logout(): Promise<void> {
     }
 }
 
+
 export const api = {
     signup: (email: string, username: string, password: string) =>
         request("/auth/signup", { method: "POST", body: JSON.stringify({ email, username, password }) }),
@@ -100,7 +101,40 @@ export const api = {
     login: (email: string, password: string) =>
         request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
 
-    logout: () => request("/auth/logout", { method: "POST" }),
-
     listProcesses: () => request("/processes"),
+
+    getProcess: (id: string) => request(`/processes/${id}`),
 };
+
+export function createProcess(payload: {
+    name: string;
+    phone_number: string;
+    auth_type: string;
+    client: string;
+    database_url: string;
+}) {
+    return request("/processes", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function updateProcessSettings(id: string, payload: { verbose?: boolean; no_skip_old?: boolean }) {
+    return request(`/processes/${id}/settings`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export function deleteProcess(id: string) {
+    return request(`/processes/${id}`, { method: "DELETE" });
+}
+
+export function checkProcessUpdate(id: string) {
+    return request(`/processes/${id}/update`, { method: "POST" });
+}
+export function runProcess(id: string) {
+    return request(`/processes/${id}/run`, { method: "POST" });
+}
+
+export function stopProcess(id: string) {
+    return request(`/processes/${id}/stop`, { method: "POST" });
+}
+
+export function getProcessLogs(id: string) {
+    return request(`/processes/${id}/logs`);
+}

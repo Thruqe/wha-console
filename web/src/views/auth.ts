@@ -34,19 +34,23 @@ export function renderAuthView() {
                    </div>`
                 : ""
             }
-            <div class="field">
-              <label for="email">Email</label>
-              <span class="icon-left">${icon(Mail, { size: 16 })}</span>
-              <input type="email" id="email" class="has-icon" placeholder="your@email.com" required />
-            </div>
-            <div class="field">
-              <label for="password">Password</label>
-              <span class="icon-left">${icon(Lock, { size: 16 })}</span>
-              <input type="${showPassword ? "text" : "password"}" id="password" class="has-icon" placeholder="••••••••" required />
-              <button type="button" class="icon-toggle" id="toggle-password">
-                ${icon(showPassword ? EyeOff : Eye, { size: 16 })}
-              </button>
-            </div>
+           <div class="field">
+  <label for="email">Email</label>
+  <div class="input-icon-wrap">
+    <span class="icon-left">${icon(Mail, { size: 16 })}</span>
+    <input type="email" id="email" class="has-icon" placeholder="your@email.com" required />
+  </div>
+</div>
+<div class="field">
+  <label for="password">Password</label>
+  <div class="input-icon-wrap">
+    <span class="icon-left">${icon(Lock, { size: 16 })}</span>
+    <input type="${showPassword ? "text" : "password"}" id="password" class="has-icon" placeholder="••••••••" required />
+    <button type="button" class="icon-toggle" id="toggle-password">
+      ${icon(showPassword ? EyeOff : Eye, { size: 16 })}
+    </button>
+  </div>
+</div>
             <button type="submit" class="primary">${mode === "login" ? "Sign in" : "Sign up"}</button>
             <p id="auth-error" class="error"></p>
           </form>
@@ -66,8 +70,12 @@ export function renderAuthView() {
         });
 
         document.getElementById("toggle-password")!.addEventListener("click", () => {
+            const passwordInput = document.getElementById("password") as HTMLInputElement;
+            const toggleBtn = document.getElementById("toggle-password")!;
             showPassword = !showPassword;
-            render();
+
+            passwordInput.type = showPassword ? "text" : "password";
+            toggleBtn.innerHTML = icon(showPassword ? EyeOff : Eye, { size: 16 });
         });
 
         document.getElementById("passkey-btn")!.addEventListener("click", async () => {

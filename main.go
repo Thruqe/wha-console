@@ -4,6 +4,9 @@ import (
 	"embed"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
@@ -36,6 +39,14 @@ func main() {
 	})
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
+	}
+
+	procManager, err := process.NewManager(db)
+	if err != nil {
+		log.Fatalf("failed to init process manager: %v", err)
+	}
+	if err := procManager.ReconcileOnBoot(); err != nil {
+		log.Printf("warning: failed to reconcile process states: %v", err)
 	}
 
 	e := echo.New()
@@ -74,13 +85,28 @@ func main() {
 	waGroup.POST("/login/begin", waHandler.BeginLogin)
 	waGroup.POST("/login/finish", waHandler.FinishLogin)
 
-	processHandler := process.NewHandler(db)
+	processHandler := process.NewHandler(db, procManager)
 	processGroup := api.Group("/processes", authHandler.RequireAuth)
 	processGroup.GET("", processHandler.List)
 	processGroup.POST("", processHandler.Start)
 	processGroup.DELETE("/:id", processHandler.Stop)
 
-	// --- Static frontend (built by Vite, embedded in the binary) ---
+	processGroup.GET("", processHandler.List)
+	processGroup.GET("/:id", processHandler.Get)
+	processGroup.POST("", processHandler.Start)
+	processGroup.DELETE("/:id", processHandler.Stop)
+
+	processGroup.GET("", processHandler.List)
+	processGroup.GET("/:id", processHandler.Get)
+	processGroup.POST("", processHandler.Start)
+	processGroup.PATCH("/:id/settings", processHandler.UpdateSettings)
+	processGroup.DELETE("/:id", processHandler.Delete)
+	processGroup.POST("/:id/update", processHandler.CheckUpdate)
+
+	processGroup.POST("/:id/run", processHandler.RunProcess)
+	processGroup.POST("/:id/stop", processHandler.StopProcess)
+	processGroup.GET("/:id/logs", processHandler.GetLogs)
+
 	distFiles := echo.MustSubFS(distFS, "dist")
 
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
@@ -88,6 +114,16 @@ func main() {
 		Filesystem: http.FS(distFiles),
 		HTML5:      true, // falls back to index.html for unmatched routes (SPA routing)
 	}))
+
+	// graceful shutdown — ensure all children are stopped on exit
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		log.Println("shutting down, stopping all processes...")
+		procManager.ShutdownAll()
+		os.Exit(0)
+	}()
 
 	log.Printf("starting server on :%s (dev mode: %v)", cfg.Port, cfg.DevMode)
 	e.Logger.Fatal(e.Start(":" + cfg.Port))
