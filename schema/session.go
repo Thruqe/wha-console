@@ -42,6 +42,8 @@ type Session struct {
 
 	PID *int `json:"-" gorm:"column:pid"`
 
+	HasRunBefore bool `gorm:"default:false" json:"-"`
+
 	CreatedAt time.Time      `json:"creation"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`

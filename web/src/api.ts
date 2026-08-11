@@ -138,3 +138,11 @@ export function stopProcess(id: string) {
 export function getProcessLogs(id: string) {
     return request(`/processes/${id}/logs`);
 }
+
+export function clearProcessLogs(id: string) {
+    return request(`/processes/${id}/logs/clear`, { method: "POST" });
+}
+
+export function logoutProcess(id: string) {
+    return request(`/processes/${id}/logout`, { method: "POST" });
+}

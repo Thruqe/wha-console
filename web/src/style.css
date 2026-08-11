@@ -13,7 +13,7 @@
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --mono: 'Fira Code', ui-monospace, Consolas, monospace;
 
   font: 18px/145% var(--sans);
   letter-spacing: 0.18px;
@@ -1080,8 +1080,8 @@ button.icon-btn {
 }
 
 .console-output {
-  background: #0d0e12;
-  color: #d4d4d8;
+  background: var(--code-bg);
+  color: var(--text-h);
   font-family: var(--mono);
   font-size: 13px;
   line-height: 150%;
@@ -1092,14 +1092,16 @@ button.icon-btn {
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;
+  border: 1px solid var(--border);
 }
+
 
 .console-line {
   display: block;
 }
 
 .console-placeholder {
-  color: #6b6375;
+  color: var(--text);
   font-style: italic;
 }
 
@@ -1334,4 +1336,117 @@ button.outline {
   background: var(--code-bg);
   color: var(--text);
   border: 1px solid var(--border);
+}
+
+.console-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.console-wrapper {
+  position: relative;
+}
+
+.jump-to-latest {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--text-h);
+  color: var(--bg);
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.jump-to-latest.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 6, 13, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  z-index: 200;
+}
+
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-overlay p {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: var(--text-h);
+  color: var(--bg);
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: var(--shadow);
+  z-index: 300;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.toast-error {
+  background: #e5484d;
+  color: #fff;
+}
+
+button.danger:disabled,
+button.outline:disabled,
+button.primary:disabled,
+button.secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+button.danger:disabled:hover,
+button.outline:disabled:hover {
+  background: inherit;
+  border-color: var(--border);
 }

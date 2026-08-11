@@ -106,6 +106,9 @@ func main() {
 	processGroup.POST("/:id/run", processHandler.RunProcess)
 	processGroup.POST("/:id/stop", processHandler.StopProcess)
 	processGroup.GET("/:id/logs", processHandler.GetLogs)
+	processGroup.POST("/:id/logs/clear", processHandler.ClearLogs)
+
+	processGroup.POST("/:id/logout", processHandler.LogoutSession)
 
 	distFiles := echo.MustSubFS(distFS, "dist")
 

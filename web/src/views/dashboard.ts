@@ -1,7 +1,10 @@
-import { checkAuth, logout, api, runProcess, stopProcess } from "../api";
+import { checkAuth, logout, api, runProcess, stopProcess, deleteProcess } from "../api";
 import { navigate } from "../router";
 import { icon, Terminal, Plus, Play, Square, Trash2, LogOut, Server } from "../icons";
 import { openProcessConfigModal } from "../components/process-config-modal";
+import { showToast } from "../components/toast";
+import { showLoadingOverlay } from "../components/loading-overlay";
+import { showConfirm } from "../components/confirm-modal";
 
 interface ProcessItem {
   id: number;
@@ -100,10 +103,30 @@ export async function renderDashboardView() {
         btn.disabled = false;
       }
     });
-
-    document.getElementById(`delete-${p.id}`)?.addEventListener("click", (e) => {
+    document.getElementById(`delete-${p.id}`)?.addEventListener("click", async (e) => {
       e.stopPropagation();
-      console.log("delete", p.id);
+
+      try {
+        const confirmed = await showConfirm({
+          title: "Delete process",
+          message: `Delete "${p.name}"? This cannot be undone.`,
+          confirmLabel: "Delete",
+          danger: true,
+        });
+        if (!confirmed) return;
+
+        const hideOverlay = showLoadingOverlay("Deleting session…");
+        try {
+          await deleteProcess(String(p.id));
+          hideOverlay();
+          renderDashboardView();
+        } catch (err) {
+          hideOverlay();
+          showToast((err as Error).message, "error");
+        }
+      } catch (err) {
+        console.error("delete flow crashed:", err);
+      }
     });
   });
 }

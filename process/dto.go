@@ -63,28 +63,30 @@ func toCardResponse(s schema.Session) CardResponse {
 
 // DetailResponse is the full view — shown only inside the process's own page.
 type DetailResponse struct {
-	ID          uint      `json:"id"`
-	Name        string    `json:"name"`
-	PhoneNumber string    `json:"phone_number"` // full number here, per detail-page rule
-	AuthType    string    `json:"auth_type"`
-	Client      string    `json:"client"`
-	Status      string    `json:"status"`
-	Verbose     bool      `json:"verbose"`
-	NoSkipOld   bool      `json:"no_skip_old"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID           uint      `json:"id"`
+	Name         string    `json:"name"`
+	PhoneNumber  string    `json:"phone_number"`
+	AuthType     string    `json:"auth_type"`
+	Client       string    `json:"client"`
+	Status       string    `json:"status"`
+	Verbose      bool      `json:"verbose"`
+	NoSkipOld    bool      `json:"no_skip_old"`
+	HasRunBefore bool      `json:"has_run_before"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 func toDetailResponse(s schema.Session) DetailResponse {
 	return DetailResponse{
-		ID:          s.ID,
-		Name:        s.Name,
-		PhoneNumber: s.PhoneNumber,
-		AuthType:    string(s.AuthType),
-		Client:      string(s.Client),
-		Status:      s.Status,
-		Verbose:     s.Verbose,
-		NoSkipOld:   s.NoSkipOld,
-		CreatedAt:   s.CreatedAt,
+		ID:           s.ID,
+		Name:         s.Name,
+		PhoneNumber:  s.PhoneNumber,
+		AuthType:     string(s.AuthType),
+		Client:       string(s.Client),
+		Status:       s.Status,
+		Verbose:      s.Verbose,
+		NoSkipOld:    s.NoSkipOld,
+		HasRunBefore: s.HasRunBefore,
+		CreatedAt:    s.CreatedAt,
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -74,11 +75,10 @@ func (m *Manager) Start(session *schema.Session) error {
 	pid := cmd.Process.Pid
 
 	if err := m.db.Model(session).Updates(map[string]interface{}{
-		"pid":    pid,
-		"status": "running",
+		"pid":            pid,
+		"status":         "running",
+		"has_run_before": true,
 	}).Error; err != nil {
-		// The process is already running at this point — kill it rather than
-		// leaving an untracked, unrecorded process alive.
 		cmd.Process.Kill()
 		logFile.Close()
 		return fmt.Errorf("started process but failed to record status: %w", err)
@@ -167,4 +167,29 @@ func buildArgs(s *schema.Session) []string {
 		args = append(args, "--no-skip-old")
 	}
 	return args
+}
+
+// Logout runs the whatsrook binary in logout mode for a session — this removes
+// the session's auth files, distinct from just deleting our DB record.
+// process/manager.go — update Logout
+func (m *Manager) Logout(session *schema.Session) error {
+	if m.IsRunning(session.ID) {
+		if err := m.Stop(session.ID); err != nil {
+			return fmt.Errorf("failed to stop process before logout: %w", err)
+		}
+		// give the process a moment to actually exit before running logout
+		time.Sleep(10 * time.Second)
+	}
+
+	cmd := exec.Command("./bin/whatsrook", "-s", session.PhoneNumber, "-l")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Pdeathsig: syscall.SIGKILL,
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("logout failed: %s", string(output))
+	}
+
+	return nil
 }

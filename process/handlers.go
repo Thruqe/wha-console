@@ -3,6 +3,7 @@ package process
 import (
 	"net/http"
 	"os"
+	"regexp"
 
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
@@ -14,6 +15,12 @@ import (
 type Handler struct {
 	DB      *gorm.DB
 	Manager *Manager
+}
+
+var ansiEscapeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripANSI(s string) string {
+	return ansiEscapeRegex.ReplaceAllString(s, "")
 }
 
 func NewHandler(db *gorm.DB, manager *Manager) *Handler {
@@ -170,14 +177,20 @@ func (h *Handler) Delete(c echo.Context) error {
 	}
 
 	id := c.Param("id")
-	result := h.DB.Where("id = ? AND user_id = ?", id, userID).Delete(&schema.Session{})
-	if result.Error != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to delete process"})
-	}
-	if result.RowsAffected == 0 {
+	var session schema.Session
+	if err := h.DB.Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "process not found"})
 	}
 
+	if session.HasRunBefore && session.Status != "logged_out" {
+		return c.JSON(http.StatusConflict, map[string]string{"error": "log out this session before deleting it"})
+	}
+
+	if err := h.DB.Unscoped().Delete(&session).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to delete process"})
+	}
+
+	os.Remove(logPath(session.ID))
 	return c.JSON(http.StatusOK, map[string]string{"message": "deleted"})
 }
 
@@ -207,5 +220,49 @@ func (h *Handler) GetLogs(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to read logs"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"logs": string(content)})
+	return c.JSON(http.StatusOK, map[string]string{"logs": stripANSI(string(content))})
+}
+
+func (h *Handler) ClearLogs(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	id := c.Param("id")
+	var session schema.Session
+	if err := h.DB.Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "process not found"})
+	}
+
+	if h.Manager.IsRunning(session.ID) {
+		return c.JSON(http.StatusConflict, map[string]string{"error": "stop the process before clearing logs"})
+	}
+
+	if err := os.Truncate(logPath(session.ID), 0); err != nil && !os.IsNotExist(err) {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to clear logs"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "logs cleared"})
+}
+
+func (h *Handler) LogoutSession(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	id := c.Param("id")
+	var session schema.Session
+	if err := h.DB.Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "process not found"})
+	}
+
+	if err := h.Manager.Logout(&session); err != nil {
+		return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
+	}
+
+	h.DB.Model(&session).Update("status", "logged_out")
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "logged out"})
 }
