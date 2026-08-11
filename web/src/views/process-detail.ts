@@ -7,7 +7,7 @@ import {
 import {
   icon, ArrowLeft, Server, Terminal, Settings, Trash2, Info,
   Activity, Square, Play, Download, ArrowDown,
-  LogOut,
+  LogOut, WrapText,
 } from "../icons";
 import { showLoadingOverlay } from "../components/loading-overlay";
 import { showToast } from "../components/toast";
@@ -47,6 +47,7 @@ export async function renderProcessDetailView(params: Record<string, string>) {
   }
 
   let activeTab: Tab = "console";
+  let wordWrap = true;
 
   function render(consoleLogs: string = "") {
     app.innerHTML = `
@@ -76,7 +77,7 @@ export async function renderProcessDetailView(params: Record<string, string>) {
         </div>
 
         <div class="detail-body">
-          ${activeTab === "console" ? renderConsoleTab(consoleLogs) : activeTab === "about" ? renderAboutTab(process) : renderSettingsTab(process)}
+          ${activeTab === "console" ? renderConsoleTab(consoleLogs, wordWrap) : activeTab === "about" ? renderAboutTab(process) : renderSettingsTab(process)}
         </div>
       </div>
     `;
@@ -88,7 +89,7 @@ export async function renderProcessDetailView(params: Record<string, string>) {
         await runProcess(String(process.id));
         location.reload();
       } catch (err) {
-        alert((err as Error).message);
+        showToast((err as Error).message, "error");
       }
     });
 
@@ -97,7 +98,7 @@ export async function renderProcessDetailView(params: Record<string, string>) {
         await stopProcess(String(process.id));
         location.reload();
       } catch (err) {
-        alert((err as Error).message);
+        showToast((err as Error).message, "error");
       }
     });
 
@@ -118,6 +119,11 @@ export async function renderProcessDetailView(params: Record<string, string>) {
         const logs = await loadConsoleLogs(process.id);
         render(logs);
       });
+
+      document.getElementById("wrap-toggle-btn")?.addEventListener("click", () => {
+        wordWrap = !wordWrap;
+        render(consoleLogs);
+      });
     }
 
     if (activeTab === "settings") {
@@ -137,10 +143,13 @@ async function loadConsoleLogs(sessionId: number): Promise<string> {
   }
 }
 
-function renderConsoleTab(logs: string): string {
+function renderConsoleTab(logs: string, wordWrap: boolean): string {
   const hasLogs = logs.trim().length > 0;
   return `
     <div class="console-toolbar">
+      <button type="button" class="outline toolbar-toggle-btn ${wordWrap ? "active" : ""}" id="wrap-toggle-btn">
+        ${icon(WrapText, { size: 14 })} Word wrap
+      </button>
       <button type="button" class="outline" id="clear-logs-btn" ${hasLogs ? "" : "disabled"}>
         ${icon(Trash2, { size: 14 })} Clear logs
       </button>
@@ -149,7 +158,7 @@ function renderConsoleTab(logs: string): string {
       </button>
     </div>
     <div class="console-wrapper">
-      <div class="console-output" id="console-output">
+      <div class="console-output ${wordWrap ? "" : "nowrap"}" id="console-output">
         ${hasLogs ? escapeHtml(logs) : `<span class="console-placeholder">No output yet — start the process to see logs here.</span>`}
       </div>
       <button type="button" class="jump-to-latest" id="jump-to-latest">
@@ -196,12 +205,19 @@ function wireConsoleTab(rawLogs: string, sessionName: string, sessionId: number,
   });
 
   document.getElementById("clear-logs-btn")?.addEventListener("click", async () => {
-    if (!confirm("Clear all logs for this process?")) return;
+    const confirmed = await showConfirm({
+      title: "Clear logs",
+      message: "Clear all logs for this process? This cannot be undone.",
+      confirmLabel: "Clear",
+      danger: true,
+    });
+    if (!confirmed) return;
+
     try {
       await clearProcessLogs(String(sessionId));
       onCleared();
     } catch (err) {
-      alert((err as Error).message);
+      showToast((err as Error).message, "error");
     }
   });
 }
@@ -222,7 +238,46 @@ function renderSettingsTab(p: ProcessDetail): string {
 
   return `
     <div class="settings-section">
-      <!-- ...session info, behavior sections unchanged... -->
+      <div class="settings-group">
+        <div class="settings-group-title">Session info</div>
+        <div class="info-row">
+          <span class="info-row-label">Phone number</span>
+          <span class="info-row-value">${p.phone_number}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-row-label">Client</span>
+          <span class="frozen-pill">${p.client}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-row-label">Auth type</span>
+          <span class="frozen-pill">${p.auth_type}</span>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">Behavior</div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Verbose logging</div>
+            <div class="settings-row-desc">Include detailed debug output in the console.</div>
+          </div>
+          <div class="toggle">
+            <input type="checkbox" id="verbose-toggle" ${p.verbose ? "checked" : ""} />
+            <label for="verbose-toggle"></label>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Process offline messages</div>
+            <div class="settings-row-desc">Skip messages sent while the process was offline.</div>
+          </div>
+          <div class="toggle">
+            <input type="checkbox" id="skip-old-toggle" ${!p.no_skip_old ? "checked" : ""} />
+            <label for="skip-old-toggle"></label>
+          </div>
+        </div>
+      </div>
 
       ${p.has_run_before
       ? `
@@ -246,7 +301,6 @@ function renderSettingsTab(p: ProcessDetail): string {
     </div>
   `;
 }
-
 
 function wireSettingsTab(process: ProcessDetail, rerender: () => void) {
   document.getElementById("verbose-toggle")?.addEventListener("change", async (e) => {
@@ -273,8 +327,6 @@ function wireSettingsTab(process: ProcessDetail, rerender: () => void) {
       showToast((err as Error).message, "error");
     }
   });
-
-
 
   document.getElementById("logout-session-btn")?.addEventListener("click", async () => {
     const confirmed = await showConfirm({

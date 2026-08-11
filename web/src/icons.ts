@@ -3,7 +3,7 @@ import {
     LogIn, UserPlus, Eye, EyeOff, Terminal, Mail, Lock, Fingerprint,
     TriangleAlert, ArrowLeft, Plus, Play, Square, Trash2, LogOut, Server,
     X, Smartphone, QrCode, Database, Settings, RefreshCw, Info, Activity,
-    Download, ArrowDown,
+    Download, ArrowDown, WrapText
 } from "lucide";
 
 export function icon(iconNode: any, options: { size?: number; class?: string } = {}) {
@@ -18,5 +18,5 @@ export {
     LogIn, UserPlus, Eye, EyeOff, Terminal, Mail, Lock, Fingerprint,
     TriangleAlert, ArrowLeft, Plus, Play, Square, Trash2, LogOut, Server,
     X, Smartphone, QrCode, Database, Settings, RefreshCw, Info, Activity,
-    Download, ArrowDown,
+    Download, ArrowDown, WrapText,
 };
