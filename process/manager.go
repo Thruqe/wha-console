@@ -193,3 +193,43 @@ func (m *Manager) Logout(session *schema.Session) error {
 
 	return nil
 }
+
+// Restart stops a running process and starts it again with current session
+// settings — used when behavior settings (verbose, no_skip_old) change,
+// since these are CLI flags baked in at launch, not hot-reloadable.
+func (m *Manager) Restart(session *schema.Session) error {
+	m.mu.Lock()
+	mp, ok := m.processes[session.ID]
+	m.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("process not running")
+	}
+
+	// Signal graceful stop and wait for the existing Wait() goroutine to clean up.
+	if err := mp.Cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("failed to stop process: %w", err)
+	}
+
+	// Poll until the manager's map no longer holds this session (set by the
+	// Wait() goroutine once the process actually exits), with a timeout.
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		m.mu.Lock()
+		_, stillRunning := m.processes[session.ID]
+		m.mu.Unlock()
+		if !stillRunning {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	m.mu.Lock()
+	_, stillRunning := m.processes[session.ID]
+	m.mu.Unlock()
+	if stillRunning {
+		return fmt.Errorf("process did not stop in time for restart")
+	}
+
+	return m.Start(session)
+}

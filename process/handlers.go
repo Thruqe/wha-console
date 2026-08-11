@@ -161,13 +161,34 @@ func (h *Handler) UpdateSettings(c echo.Context) error {
 		updates["no_skip_old"] = *req.NoSkipOld
 	}
 
-	if len(updates) > 0 {
-		if err := h.DB.Model(&session).Updates(updates).Error; err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update settings"})
-		}
+	if len(updates) == 0 {
+		return c.JSON(http.StatusOK, toDetailResponse(session))
 	}
 
-	return c.JSON(http.StatusOK, toDetailResponse(session))
+	if err := h.DB.Model(&session).Updates(updates).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update settings"})
+	}
+
+	// Reload to get the updated field values before deciding whether to restart.
+	if err := h.DB.First(&session, session.ID).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to reload session"})
+	}
+
+	restarted := false
+	if h.Manager.IsRunning(session.ID) {
+		if err := h.Manager.Restart(&session); err != nil {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"process": toDetailResponse(session),
+				"warning": "settings saved, but restart failed: " + err.Error(),
+			})
+		}
+		restarted = true
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"process":   toDetailResponse(session),
+		"restarted": restarted,
+	})
 }
 
 func (h *Handler) Delete(c echo.Context) error {

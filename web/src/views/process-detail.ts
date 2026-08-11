@@ -368,4 +368,38 @@ function wireSettingsTab(process: ProcessDetail, rerender: () => void) {
       showToast((err as Error).message, "error");
     }
   });
+  document.getElementById("verbose-toggle")?.addEventListener("change", async (e) => {
+    const toggle = e.target as HTMLInputElement;
+    const checked = toggle.checked;
+    try {
+      const result = await updateProcessSettings(String(process.id), { verbose: checked });
+      process.verbose = checked;
+      if (result.restarted) {
+        showToast("Setting saved — process restarted", "success");
+      } else if (result.warning) {
+        showToast(result.warning, "error");
+      }
+    } catch (err) {
+      toggle.checked = !checked;
+      showToast((err as Error).message, "error");
+    }
+  });
+
+  document.getElementById("skip-old-toggle")?.addEventListener("change", async (e) => {
+    const toggle = e.target as HTMLInputElement;
+    const checked = toggle.checked;
+    const noSkipOld = !checked;
+    try {
+      const result = await updateProcessSettings(String(process.id), { no_skip_old: noSkipOld });
+      process.no_skip_old = noSkipOld;
+      if (result.restarted) {
+        showToast("Setting saved — process restarted", "success");
+      } else if (result.warning) {
+        showToast(result.warning, "error");
+      }
+    } catch (err) {
+      toggle.checked = !checked;
+      showToast((err as Error).message, "error");
+    }
+  });
 }
