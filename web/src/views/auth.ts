@@ -35,10 +35,10 @@ export function renderAuthView() {
                 : ""
             }
            <div class="field">
-  <label for="email">Email</label>
+  <label for="email">${mode === "login" ? "Email or Username" : "Email"}</label>
   <div class="input-icon-wrap">
     <span class="icon-left">${icon(Mail, { size: 16 })}</span>
-    <input type="email" id="email" class="has-icon" placeholder="your@email.com" required />
+    <input type="${mode === "login" ? "text" : "email"}" id="email" class="has-icon" placeholder="${mode === "login" ? "your@email.com or username" : "your@email.com"}" required />
   </div>
 </div>
 <div class="field">

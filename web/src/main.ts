@@ -6,14 +6,21 @@ import { renderPasskeyPromptView } from "./views/passkey-prompt";
 import { renderNotFoundView } from "./views/not-found";
 import { checkAuth } from "./api";
 import { renderProcessDetailView } from "./views/process-detail";
+import { renderApiDocsView } from "./views/api-docs";
+
+import { initCookieBanner } from "./components/cookie-banner";
+import { trackEvent } from "./telemetry";
 
 registerRoute("/login", renderAuthView);
 registerRoute("/dashboard", renderDashboardView);
 registerRoute("/passkey-prompt", renderPasskeyPromptView);
 registerRoute("/processes/:id", renderProcessDetailView);
+registerRoute("/api-docs", renderApiDocsView);
 registerRoute("/404", renderNotFoundView);
 
 async function bootstrap() {
+    initCookieBanner();
+
     const isAuthed = await checkAuth();
     const currentHash = window.location.hash.slice(1);
 
@@ -27,6 +34,7 @@ async function bootstrap() {
     }
 
     startRouter();
+    trackEvent("page_view", currentHash || "login");
 }
 
 bootstrap();

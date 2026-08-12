@@ -4,9 +4,14 @@ package schema
 import (
 	"fmt"
 
+	"log"
+	"os"
+	"time"
+
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type DBConfig struct {
@@ -26,12 +31,33 @@ func NewDB(cfg DBConfig) (*gorm.DB, error) {
 		return nil, fmt.Errorf("unsupported driver: %s", cfg.Driver)
 	}
 
-	db, err := gorm.Open(dialector, &gorm.Config{})
+	newLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             200 * time.Millisecond,
+			LogLevel:                  logger.Warn,
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  false,
+		},
+	)
+
+	db, err := gorm.Open(dialector, &gorm.Config{
+		Logger: newLogger,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	if err := db.AutoMigrate(&User{}, &Session{}, &RefreshToken{}, &Credential{}); err != nil {
+	if err := db.AutoMigrate(
+		&User{},
+		&Session{},
+		&RefreshToken{},
+		&Credential{},
+		&TelemetryEvent{},
+		&DailyMetric{},
+		&CookiePreference{},
+		&APIKey{},
+	); err != nil {
 		return nil, err
 	}
 

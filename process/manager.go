@@ -177,18 +177,33 @@ func (m *Manager) Logout(session *schema.Session) error {
 		if err := m.Stop(session.ID); err != nil {
 			return fmt.Errorf("failed to stop process before logout: %w", err)
 		}
-		// give the process a moment to actually exit before running logout
-		time.Sleep(10 * time.Second)
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if !m.IsRunning(session.ID) {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
 	}
 
-	cmd := exec.Command("./bin/whatsrook", "-s", session.PhoneNumber, "-l")
+	args := []string{
+		"-s", session.PhoneNumber,
+		"-c", string(session.Client),
+		"-db", session.DatabaseURL,
+		"-l",
+	}
+	if session.Verbose {
+		args = append(args, "-v")
+	}
+
+	cmd := exec.Command("./bin/whatsrook", args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Pdeathsig: syscall.SIGKILL,
 	}
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("logout failed: %s", string(output))
+		return fmt.Errorf("logout process failed: %v (output: %s)", err, string(output))
 	}
 
 	return nil

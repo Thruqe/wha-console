@@ -1,24 +1,25 @@
 import { openModal, closeModal } from "./modal";
-import { icon, X, Smartphone, QrCode, Database } from "../icons";
+import { icon, X, Smartphone, QrCode, Database, Check } from "../icons";
 import { createProcess } from "../api";
+import { showToast } from "./toast";
 
 export function openProcessConfigModal(onCreated: () => void) {
   const overlay = openModal(`
     <div class="modal-header">
-      <h2>Process Configuration</h2>
+      <h2>Create New Process</h2>
       <button type="button" class="modal-close" id="modal-close-btn">${icon(X, { size: 18 })}</button>
     </div>
     <form id="process-form">
       <div class="modal-body">
         <div class="field">
           <label for="proc-name">Process Name</label>
-          <input type="text" id="proc-name" placeholder="e.g. sales-support" required />
+          <input type="text" id="proc-name" placeholder="e.g. sales-bot" required />
         </div>
 
         <div class="field">
           <label for="proc-phone">Phone Number</label>
-          <input type="tel" id="proc-phone" placeholder="+1 555 123 4567" required />
-          <p class="field-hint">Only the last 4 digits are shown on your dashboard.</p>
+          <input type="tel" id="proc-phone" placeholder="e.g. 15550192834" required />
+          <p class="field-hint">Enter session phone number in international format.</p>
         </div>
 
         <div class="field">
@@ -36,7 +37,7 @@ export function openProcessConfigModal(onCreated: () => void) {
         </div>
 
         <div class="field">
-          <label>Client</label>
+          <label>Client Engine</label>
           <div class="radio-group">
             <div class="radio-option">
               <input type="radio" name="client" id="client-chrome" value="chrome" checked />
@@ -54,19 +55,21 @@ export function openProcessConfigModal(onCreated: () => void) {
         </div>
 
         <div class="field">
-  <label for="proc-db">Database URL</label>
-  <div class="input-icon-wrap">
-    <span class="icon-left">${icon(Database, { size: 16 })}</span>
-    <input type="text" id="proc-db" class="has-icon" placeholder="postgres://user:pass@host:5432/db" required />
-  </div>
-  <p class="field-hint">Must be a Postgres connection string.</p>
-</div>
+          <label for="proc-db">Database DSN Connection</label>
+          <div class="input-icon-wrap">
+            <span class="icon-left">${icon(Database, { size: 16 })}</span>
+            <input type="text" id="proc-db" class="has-icon" placeholder="postgres://postgres:postgres@host:" required />
+          </div>
+          <p class="field-hint">PostgreSQL session database DSN.</p>
+        </div>
 
         <p id="process-form-error" class="error"></p>
       </div>
       <div class="modal-footer">
         <button type="button" class="secondary" id="modal-cancel-btn">Cancel</button>
-        <button type="submit" class="primary">Create process</button>
+        <button type="submit" class="primary" id="proc-submit-btn" style="display: inline-flex; align-items: center; gap: 8px;">
+          ${icon(Check, { size: 16 })} Done — Create Process
+        </button>
       </div>
     </form>
   `);
@@ -77,7 +80,9 @@ export function openProcessConfigModal(onCreated: () => void) {
   document.getElementById("process-form")!.addEventListener("submit", async (e) => {
     e.preventDefault();
     const errorEl = document.getElementById("process-form-error")!;
+    const submitBtn = document.getElementById("proc-submit-btn") as HTMLButtonElement;
     errorEl.textContent = "";
+    submitBtn.disabled = true;
 
     const name = (document.getElementById("proc-name") as HTMLInputElement).value;
     const phone = (document.getElementById("proc-phone") as HTMLInputElement).value;
@@ -88,9 +93,11 @@ export function openProcessConfigModal(onCreated: () => void) {
     try {
       await createProcess({ name, phone_number: phone, auth_type: authType, client, database_url: databaseUrl });
       closeModal(overlay);
+      showToast(`Process "${name}" created successfully`, "success");
       onCreated();
     } catch (err) {
       errorEl.textContent = (err as Error).message;
+      submitBtn.disabled = false;
     }
   });
 }

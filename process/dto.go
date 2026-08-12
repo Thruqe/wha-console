@@ -115,3 +115,47 @@ func joinStrings(items []string) string {
 	}
 	return out
 }
+
+type ActivityPoint struct {
+	Hour string `json:"hour"`
+	Sent int64  `json:"sent"`
+	Recv int64  `json:"recv"`
+}
+
+type BotStatsResponse struct {
+	PushName         string          `json:"push_name"`
+	PhoneNumber      string          `json:"phone_number"`
+	JID              string          `json:"jid"`
+	LID              string          `json:"lid"`
+	ProfilePhotoURL  string          `json:"profile_photo_url"`
+	MessagesSent     int64           `json:"messages_sent"`
+	MessagesReceived int64           `json:"messages_received"`
+	GroupsCount      int64           `json:"groups_count"`
+	CommunitiesCount int64           `json:"communities_count"`
+	ContactsCount    int64           `json:"contacts_count"`
+	ActivityGraph    []ActivityPoint `json:"activity_graph"`
+}
+
+type GroupItemResponse struct {
+	Name         string `json:"name"`
+	JID          string `json:"jid"`
+	MembersCount int    `json:"membersCount"`
+	IsAdmin      bool   `json:"isAdmin"`
+	CreatedAt    string `json:"createdAt"`
+	Description  string `json:"description"`
+}
+
+type ContactItemResponse struct {
+	PushName    string `json:"pushName"`
+	PhoneNumber string `json:"phoneNumber"`
+	JID         string `json:"jid"`
+	Status      string `json:"status"`
+}
+
+type CommunityItemResponse struct {
+	Name           string `json:"name"`
+	JID            string `json:"jid"`
+	SubGroupsCount int    `json:"subGroupsCount"`
+	TotalMembers   int    `json:"totalMembers"`
+	Description    string `json:"description"`
+}

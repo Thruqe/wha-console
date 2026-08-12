@@ -98,8 +98,8 @@ export const api = {
     signup: (email: string, username: string, password: string) =>
         request("/auth/signup", { method: "POST", body: JSON.stringify({ email, username, password }) }),
 
-    login: (email: string, password: string) =>
-        request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+    login: (identifier: string, password: string) =>
+        request("/auth/login", { method: "POST", body: JSON.stringify({ email: identifier, username: identifier, password }) }),
 
     listProcesses: () => request("/processes"),
 

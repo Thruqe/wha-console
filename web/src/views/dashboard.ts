@@ -1,9 +1,13 @@
 import { checkAuth, logout, api, runProcess, stopProcess, deleteProcess } from "../api";
 import { navigate } from "../router";
-import { icon, Terminal, Plus, Play, Square, Trash2, LogOut, Server } from "../icons";
+import { icon, Terminal, Plus, Play, Square, Trash2, LogOut, Server, Info, ShieldCheck, User, Code } from "../icons";
 import { openProcessConfigModal } from "../components/process-config-modal";
+import { openAboutModal } from "../components/about-modal";
+import { openCookiePreferencesModal } from "../components/cookie-banner";
+import { openUserSettingsModal } from "../components/user-settings-modal";
+import { trackEvent } from "../telemetry";
 import { showToast } from "../components/toast";
-import { showLoadingOverlay } from "../components/loading-overlay";
+import { showLoadingOverlay, renderSpinner } from "../components/loading-overlay";
 import { showConfirm } from "../components/confirm-modal";
 
 interface ProcessItem {
@@ -23,8 +27,10 @@ export async function renderDashboardView() {
     return;
   }
 
+  trackEvent("page_view", "dashboard");
+
   const app = document.getElementById("app")!;
-  app.innerHTML = `<div class="dash-wrapper"><div class="dash-main"><p>Loading…</p></div></div>`;
+  app.innerHTML = `<div class="dash-wrapper"><div class="dash-main">${renderSpinner("Loading processes...")}</div></div>`;
 
   let processes: ProcessItem[] = [];
   try {
@@ -39,7 +45,19 @@ export async function renderDashboardView() {
       <div class="dash-header">
         <div class="dash-logo">${icon(Terminal, { size: 20 })} wha-console</div>
         <div class="dash-header-actions">
-          <button type="button" class="icon-btn" id="logout-btn" title="Log out">
+          <button type="button" class="icon-btn" id="api-docs-btn" title="API Keys & Developer Docs">
+            ${icon(Code, { size: 16 })}
+          </button>
+          <button type="button" class="icon-btn" id="user-settings-btn" title="User Account Settings">
+            ${icon(User, { size: 16 })}
+          </button>
+          <button type="button" class="icon-btn" id="cookie-pref-btn" title="Cookie & Privacy Settings">
+            ${icon(ShieldCheck, { size: 16 })}
+          </button>
+          <button type="button" class="icon-btn" id="about-btn" title="About Console">
+            ${icon(Info, { size: 16 })}
+          </button>
+          <button type="button" class="icon-btn" id="logout-btn" title="Log out of Console">
             ${icon(LogOut, { size: 16 })}
           </button>
         </div>
@@ -60,6 +78,22 @@ export async function renderDashboardView() {
       </div>
     </div>
   `;
+
+  document.getElementById("api-docs-btn")!.addEventListener("click", () => {
+    navigate("/api-docs");
+  });
+
+  document.getElementById("user-settings-btn")!.addEventListener("click", () => {
+    openUserSettingsModal();
+  });
+
+  document.getElementById("cookie-pref-btn")!.addEventListener("click", () => {
+    openCookiePreferencesModal();
+  });
+
+  document.getElementById("about-btn")!.addEventListener("click", () => {
+    openAboutModal();
+  });
 
   document.getElementById("logout-btn")!.addEventListener("click", async () => {
     await logout();
@@ -86,7 +120,7 @@ export async function renderDashboardView() {
         await runProcess(String(p.id));
         renderDashboardView();
       } catch (err) {
-        alert((err as Error).message);
+        showToast((err as Error).message, "error");
         btn.disabled = false;
       }
     });
@@ -99,10 +133,11 @@ export async function renderDashboardView() {
         await stopProcess(String(p.id));
         renderDashboardView();
       } catch (err) {
-        alert((err as Error).message);
+        showToast((err as Error).message, "error");
         btn.disabled = false;
       }
     });
+
     document.getElementById(`delete-${p.id}`)?.addEventListener("click", async (e) => {
       e.stopPropagation();
 

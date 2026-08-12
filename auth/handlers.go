@@ -34,7 +34,14 @@ type signupRequest struct {
 
 type loginRequest struct {
 	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
+}
+
+type updateProfileRequest struct {
+	Email       string `json:"email"`
+	Username    string `json:"username"`
+	NewPassword string `json:"new_password"`
 }
 
 func (h *AuthHandler) Signup(c echo.Context) error {
@@ -69,14 +76,22 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
+	identifier := req.Email
+	if identifier == "" {
+		identifier = req.Username
+	}
+	if identifier == "" || req.Password == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "email or username and password are required"})
+	}
+
 	var user schema.User
-	if err := h.DB.Where("email = ?", req.Email).First(&user).Error; err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
+	if err := h.DB.Where("email = ? OR username = ?", identifier, identifier).First(&user).Error; err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid email/username or password"})
 	}
 
 	valid, err := VerifyPassword(req.Password, user.Password)
 	if err != nil || !valid {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid email/username or password"})
 	}
 
 	return h.IssueTokensAndRespond(c, user.ID)
@@ -119,8 +134,6 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"message": "logged out"})
 }
 
-// issueTokensAndRespond generates both tokens, sets the refresh token as an
-// httpOnly cookie, and returns the access token in the JSON body.
 func (h *AuthHandler) IssueTokensAndRespond(c echo.Context, userID string) error {
 	accessToken, err := GenerateAccessToken(userID, h.Secret)
 	if err != nil {
@@ -150,5 +163,62 @@ func (h *AuthHandler) Me(c echo.Context) error {
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
-	return c.JSON(http.StatusOK, map[string]any{"user_id": userID})
+
+	var user schema.User
+	if err := h.DB.Where("id = ?", userID).First(&user).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"user_id":        user.ID,
+		"username":       user.Username,
+		"email":          user.Email,
+		"profile_color":  user.ProfileColor,
+		"created_at":     user.CreatedAt,
+	})
+}
+
+func (h *AuthHandler) UpdateProfile(c echo.Context) error {
+	userID, ok := UserIDFromContext(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	var req updateProfileRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	var user schema.User
+	if err := h.DB.Where("id = ?", userID).First(&user).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
+	}
+
+	updates := map[string]interface{}{}
+	if req.Username != "" && req.Username != user.Username {
+		updates["username"] = req.Username
+	}
+	if req.Email != "" && req.Email != user.Email {
+		updates["email"] = req.Email
+	}
+	if req.NewPassword != "" {
+		hashed, err := HashPassword(req.NewPassword)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to hash password"})
+		}
+		updates["password"] = hashed
+	}
+
+	if len(updates) > 0 {
+		if err := h.DB.Model(&user).Updates(updates).Error; err != nil {
+			return c.JSON(http.StatusConflict, map[string]string{"error": "email or username already in use"})
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"message":  "profile updated",
+		"user_id":  user.ID,
+		"username": user.Username,
+		"email":    user.Email,
+	})
 }

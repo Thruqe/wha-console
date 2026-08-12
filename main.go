@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/joho/godotenv"
@@ -16,6 +17,7 @@ import (
 	"wha-console/config"
 	"wha-console/process"
 	"wha-console/schema"
+	"wha-console/telemetry"
 	"wha-console/webauthn"
 )
 
@@ -72,6 +74,7 @@ func main() {
 	authGroup.POST("/signup", authHandler.Signup)
 	authGroup.POST("/login", authHandler.Login)
 	authGroup.GET("/me", authHandler.Me, authHandler.RequireAuth)
+	authGroup.PATCH("/profile", authHandler.UpdateProfile, authHandler.RequireAuth)
 	authGroup.POST("/refresh", authHandler.Refresh)
 	authGroup.POST("/logout", authHandler.Logout)
 
@@ -106,9 +109,42 @@ func main() {
 	processGroup.POST("/:id/run", processHandler.RunProcess)
 	processGroup.POST("/:id/stop", processHandler.StopProcess)
 	processGroup.GET("/:id/logs", processHandler.GetLogs)
+	processGroup.GET("/:id/logs/stream", processHandler.StreamLogs)
 	processGroup.POST("/:id/logs/clear", processHandler.ClearLogs)
+	processGroup.GET("/:id/stats", processHandler.GetBotStats)
+	processGroup.GET("/:id/groups", processHandler.GetGroupsList)
+	processGroup.GET("/:id/communities", processHandler.GetCommunitiesList)
+	processGroup.GET("/:id/contacts", processHandler.GetContactsList)
 
 	processGroup.POST("/:id/logout", processHandler.LogoutSession)
+
+	// --- API Key routes (Uninhibited / Excluded from rate limiters) ---
+	api.GET("/keys", authHandler.ListAPIKeys, authHandler.RequireAuth)
+	api.POST("/keys", authHandler.CreateAPIKey, authHandler.RequireAuth)
+	api.DELETE("/keys/:id", authHandler.RevokeAPIKey, authHandler.RequireAuth)
+
+	// Rate limiter middleware for general interactive routes
+	rateLimiterConfig := middleware.RateLimiterConfig{
+		Skipper: func(c echo.Context) bool {
+			// Skip rate limiting for API Key routes or requests using an API Key
+			path := c.Path()
+			if strings.HasPrefix(path, "/api/keys") {
+				return true
+			}
+			authHeader := c.Request().Header.Get("Authorization")
+			apiKey := c.Request().Header.Get("X-API-Key")
+			return apiKey != "" || strings.Contains(authHeader, "wha_live_")
+		},
+		Store: middleware.NewRateLimiterMemoryStore(100), // 100 requests per second
+	}
+	api.Use(middleware.RateLimiterWithConfig(rateLimiterConfig))
+
+	// --- Telemetry & Cookie Preference routes ---
+	telemetryHandler := telemetry.NewHandler(db)
+	api.POST("/telemetry/event", telemetryHandler.LogTelemetryEvent)
+	api.GET("/telemetry/metrics", telemetryHandler.GetMetricsSummary, authHandler.RequireAuth)
+	api.POST("/cookies/preference", telemetryHandler.SaveCookiePreference)
+	api.GET("/cookies/preference", telemetryHandler.GetCookiePreference)
 
 	distFiles := echo.MustSubFS(distFS, "dist")
 

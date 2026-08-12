@@ -4,6 +4,7 @@ package auth
 import (
 	"net/http"
 	"strings"
+	"time"
 	"wha-console/schema"
 
 	"github.com/labstack/echo/v4"
@@ -11,27 +12,54 @@ import (
 
 const UserIDContextKey = "user_id"
 
-// RequireAuth validates the Authorization: Bearer <token> header and
-// attaches the authenticated user ID to the request context.
+// RequireAuth validates either a JWT Bearer token or an X-API-Key / Bearer wha_live_... API key,
+// attaching the authenticated user ID to the request context.
 func (h *AuthHandler) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		// 1. Check X-API-Key header first
+		apiKeyHeader := c.Request().Header.Get("X-API-Key")
+		if apiKeyHeader == "" {
+			apiKeyHeader = c.QueryParam("api_key")
+		}
+
 		authHeader := c.Request().Header.Get("Authorization")
-		if authHeader == "" {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing authorization header"})
+		token := ""
+
+		if authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				token = parts[1]
+				if strings.HasPrefix(token, "wha_live_") {
+					apiKeyHeader = token
+				}
+			}
 		}
 
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid authorization header format"})
+		// If API Key is present, authenticate via API Key
+		if apiKeyHeader != "" {
+			var apiKey schema.APIKey
+			if err := h.DB.Where("key = ?", apiKeyHeader).First(&apiKey).Error; err != nil {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid API key"})
+			}
+
+			// Update last used timestamp
+			now := time.Now()
+			h.DB.Model(&apiKey).Update("last_used_at", now)
+
+			c.Set(UserIDContextKey, apiKey.UserID)
+			return next(c)
 		}
 
-		claims, err := ParseAccessToken(parts[1], h.Secret)
+		// 2. Authenticate via JWT Token
+		if token == "" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing authorization token or API key"})
+		}
+
+		claims, err := ParseAccessToken(token, h.Secret)
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid or expired token"})
 		}
 
-		// Confirm the user still actually exists — a valid signature alone
-		// isn't enough if the DB was wiped or the account was deleted.
 		var exists int64
 		h.DB.Model(&schema.User{}).Where("id = ?", claims.UserID).Count(&exists)
 		if exists == 0 {
