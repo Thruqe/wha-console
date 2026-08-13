@@ -48,6 +48,8 @@ func NewDB(cfg DBConfig) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	preMigrate(db)
+
 	if err := db.AutoMigrate(
 		&User{},
 		&Session{},
@@ -67,6 +69,16 @@ func NewDB(cfg DBConfig) (*gorm.DB, error) {
 	}
 
 	return db, nil
+}
+
+func preMigrate(db *gorm.DB) {
+	// For existing tables in Postgres or SQLite, ensure columns exist with safe defaults before AutoMigrate
+	if db.Migrator().HasTable("sessions") {
+		_ = db.Exec(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS auto_restart BOOLEAN DEFAULT TRUE;`)
+		_ = db.Exec(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS desired_status TEXT DEFAULT 'stopped';`)
+		_ = db.Exec(`UPDATE sessions SET auto_restart = TRUE WHERE auto_restart IS NULL;`)
+		_ = db.Exec(`UPDATE sessions SET desired_status = 'stopped' WHERE desired_status IS NULL OR desired_status = '';`)
+	}
 }
 
 func runMigrations(db *gorm.DB) error {
