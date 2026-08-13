@@ -15,8 +15,9 @@ type CreateRequest struct {
 }
 
 type UpdateSettingsRequest struct {
-	Verbose   *bool `json:"verbose"`
-	NoSkipOld *bool `json:"no_skip_old"`
+	Verbose     *bool `json:"verbose"`
+	NoSkipOld   *bool `json:"no_skip_old"`
+	AutoRestart *bool `json:"auto_restart"`
 }
 
 func (r CreateRequest) Validate() error {
@@ -46,6 +47,8 @@ type CardResponse struct {
 	AuthType         string    `json:"auth_type"`
 	Client           string    `json:"client"`
 	Status           string    `json:"status"`
+	DesiredStatus    string    `json:"desired_status,omitempty"`
+	AutoRestart      bool      `json:"auto_restart"`
 	WaitlistPosition int       `json:"waitlist_position,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 }
@@ -62,6 +65,8 @@ func toCardResponse(s schema.Session, waitlistPos ...int) CardResponse {
 		AuthType:         string(s.AuthType),
 		Client:           string(s.Client),
 		Status:           s.Status,
+		DesiredStatus:    s.DesiredStatus,
+		AutoRestart:      s.AutoRestart,
 		WaitlistPosition: pos,
 		CreatedAt:        s.CreatedAt,
 	}
@@ -75,6 +80,8 @@ type DetailResponse struct {
 	AuthType         string    `json:"auth_type"`
 	Client           string    `json:"client"`
 	Status           string    `json:"status"`
+	DesiredStatus    string    `json:"desired_status,omitempty"`
+	AutoRestart      bool      `json:"auto_restart"`
 	WaitlistPosition int       `json:"waitlist_position,omitempty"`
 	Verbose          bool      `json:"verbose"`
 	NoSkipOld        bool      `json:"no_skip_old"`
@@ -94,6 +101,8 @@ func toDetailResponse(s schema.Session, waitlistPos ...int) DetailResponse {
 		AuthType:         string(s.AuthType),
 		Client:           string(s.Client),
 		Status:           s.Status,
+		DesiredStatus:    s.DesiredStatus,
+		AutoRestart:      s.AutoRestart,
 		WaitlistPosition: pos,
 		Verbose:          s.Verbose,
 		NoSkipOld:        s.NoSkipOld,

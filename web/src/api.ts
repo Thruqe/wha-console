@@ -116,7 +116,7 @@ export function createProcess(payload: {
     return request("/processes", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export function updateProcessSettings(id: string, payload: { verbose?: boolean; no_skip_old?: boolean }) {
+export function updateProcessSettings(id: string, payload: { verbose?: boolean; no_skip_old?: boolean; auto_restart?: boolean }) {
     return request(`/processes/${id}/settings`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 

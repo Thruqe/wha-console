@@ -24,6 +24,8 @@ interface ProcessDetail {
   auth_type: string;
   client: string;
   status: string;
+  desired_status?: string;
+  auto_restart?: boolean;
   waitlist_position?: number;
   verbose: boolean;
   no_skip_old: boolean;
@@ -623,6 +625,17 @@ function renderSettingsTab(p: ProcessDetail): string {
                 <label for="skip-old-toggle"></label>
               </div>
             </div>
+
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-label">Auto Restart on Boot</div>
+                <div class="settings-row-desc">Automatically restore and restart this process when the server reboots.</div>
+              </div>
+              <div class="toggle">
+                <input type="checkbox" id="auto-restart-toggle" ${p.auto_restart !== false ? "checked" : ""} />
+                <label for="auto-restart-toggle"></label>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -735,6 +748,20 @@ function wireSettingsTab(process: ProcessDetail, rerender: () => void) {
       } else {
         showToast("Offline messages setting updated", "success");
       }
+      rerender();
+    } catch (err) {
+      toggle.checked = !checked;
+      showToast((err as Error).message, "error");
+    }
+  });
+
+  document.getElementById("auto-restart-toggle")?.addEventListener("change", async (e) => {
+    const toggle = e.target as HTMLInputElement;
+    const checked = toggle.checked;
+    try {
+      await updateProcessSettings(String(process.id), { auto_restart: checked });
+      process.auto_restart = checked;
+      showToast("Auto-restart setting updated", "success");
       rerender();
     } catch (err) {
       toggle.checked = !checked;

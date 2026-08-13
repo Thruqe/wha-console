@@ -74,7 +74,10 @@ func (m *Manager) GetLimits() SystemLimits {
 func (m *Manager) Start(session *schema.Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.startProcessLocked(session)
+}
 
+func (m *Manager) startProcessLocked(session *schema.Session) error {
 	if _, running := m.processes[session.ID]; running {
 		return fmt.Errorf("process already running")
 	}
@@ -100,6 +103,7 @@ func (m *Manager) Start(session *schema.Session) error {
 	if err := m.db.Model(session).Updates(map[string]interface{}{
 		"pid":            pid,
 		"status":         "running",
+		"desired_status": "running",
 		"has_run_before": true,
 	}).Error; err != nil {
 		cmd.Process.Kill()
@@ -109,29 +113,29 @@ func (m *Manager) Start(session *schema.Session) error {
 
 	m.processes[session.ID] = &ManagedProcess{Cmd: cmd, LogFile: logFile}
 
-	go func() {
-		waitErr := cmd.Wait()
+	go func(sID uint, c *exec.Cmd, f *os.File) {
+		waitErr := c.Wait()
 
 		m.mu.Lock()
-		delete(m.processes, session.ID)
+		delete(m.processes, sID)
 		m.mu.Unlock()
-		logFile.Close()
+		f.Close()
 
 		status := "stopped"
 		if waitErr != nil {
 			status = "crashed"
 		}
 
-		if err := m.db.Model(&schema.Session{}).Where("id = ?", session.ID).Updates(map[string]interface{}{
+		if err := m.db.Model(&schema.Session{}).Where("id = ?", sID).Updates(map[string]interface{}{
 			"status": status,
 			"pid":    nil,
 		}).Error; err != nil {
-			log.Printf("failed to update session %d status after exit: %v", session.ID, err)
+			log.Printf("failed to update session %d status after exit: %v", sID, err)
 		}
 
 		// Whenever a process stops, try processing the waitlist for available slots
 		go m.ProcessWaitlist()
-	}()
+	}(session.ID, cmd, logFile)
 
 	return nil
 }
@@ -167,14 +171,80 @@ func (m *Manager) ShutdownAll() {
 	}
 }
 
-// ReconcileOnBoot cleans up stale process states from previous server instances.
-func (m *Manager) ReconcileOnBoot() error {
+// ReconcileAndRecoverOnBoot recovers running and queued processes after a server restart.
+func (m *Manager) ReconcileAndRecoverOnBoot() error {
+	log.Println("[process-manager] starting boot reconciliation and process recovery...")
+
+	// 1. Clear any stale PIDs from previous server runs
+	if err := m.db.Model(&schema.Session{}).Where("pid IS NOT NULL").Update("pid", nil).Error; err != nil {
+		log.Printf("[process-manager] warning: failed to clear stale pids: %v", err)
+	}
+
+	// 2. Query sessions that should be running:
+	// Either desired_status == 'running' OR (status == 'running' AND desired_status != 'stopped')
+	// Filter by auto_restart == true
+	var sessionsToRecover []schema.Session
+	if err := m.db.Where("(desired_status = ? OR (status = ? AND desired_status != ?)) AND auto_restart = ?", "running", "running", "stopped", true).
+		Order("created_at asc, id asc").
+		Find(&sessionsToRecover).Error; err != nil {
+		return fmt.Errorf("failed to query sessions for boot recovery: %w", err)
+	}
+
+	// 3. Mark all sessions currently in 'running' state in DB to 'stopped' initially before restarting
 	if err := m.db.Model(&schema.Session{}).
 		Where("status = ?", "running").
-		Updates(map[string]interface{}{"status": "stopped", "pid": nil}).Error; err != nil {
-		return err
+		Update("status", "stopped").Error; err != nil {
+		log.Printf("[process-manager] warning: failed to reset running status: %v", err)
 	}
-	return m.reindexWaitlistPositions()
+
+	// 4. Re-index waitlist positions
+	if err := m.reindexWaitlistPositions(); err != nil {
+		log.Printf("[process-manager] warning: failed to reindex waitlist on boot: %v", err)
+	}
+
+	recoveredCount := 0
+	queuedCount := 0
+
+	for _, s := range sessionsToRecover {
+		session := s
+
+		// Check if already in waitlist
+		if pos := m.GetWaitlistPosition(session.ID); pos > 0 {
+			log.Printf("[process-manager] session %d (%s) is already queued in waitlist (position %d)", session.ID, session.Name, pos)
+			continue
+		}
+
+		limits := m.GetLimits()
+		if limits.LimitReached {
+			entry, err := m.EnqueueWaitlist(session.ID, session.UserID)
+			if err != nil {
+				log.Printf("[process-manager] failed to enqueue session %d (%s) to waitlist on boot: %v", session.ID, session.Name, err)
+			} else {
+				log.Printf("[process-manager] server capacity reached: enqueued session %d (%s) to waitlist (position %d)", session.ID, session.Name, entry.Position)
+				queuedCount++
+			}
+			continue
+		}
+
+		if err := m.Start(&session); err != nil {
+			log.Printf("[process-manager] failed to restart session %d (%s) on boot: %v", session.ID, session.Name, err)
+		} else {
+			log.Printf("[process-manager] successfully restarted process for session %d (%s)", session.ID, session.Name)
+			recoveredCount++
+		}
+	}
+
+	log.Printf("[process-manager] boot recovery completed: %d restarted, %d queued in waitlist", recoveredCount, queuedCount)
+
+	// Trigger waitlist processing
+	go m.ProcessWaitlist()
+
+	return nil
+}
+
+// ReconcileOnBoot is a backward-compatible alias for ReconcileAndRecoverOnBoot.
+func (m *Manager) ReconcileOnBoot() error {
+	return m.ReconcileAndRecoverOnBoot()
 }
 
 func buildArgs(s *schema.Session) []string {
@@ -296,7 +366,10 @@ func (m *Manager) EnqueueWaitlist(sessionID uint, userID string) (*schema.Waitli
 		return nil, fmt.Errorf("failed to enqueue session in waitlist: %w", err)
 	}
 
-	m.db.Model(&schema.Session{}).Where("id = ?", sessionID).Update("status", "queued")
+	m.db.Model(&schema.Session{}).Where("id = ?", sessionID).Updates(map[string]interface{}{
+		"status":         "queued",
+		"desired_status": "running",
+	})
 	return &entry, nil
 }
 
@@ -311,7 +384,10 @@ func (m *Manager) CancelWaitlist(sessionID uint, userID string) error {
 		return fmt.Errorf("failed to cancel waitlist entry: %w", err)
 	}
 
-	m.db.Model(&schema.Session{}).Where("id = ?", sessionID).Update("status", "stopped")
+	m.db.Model(&schema.Session{}).Where("id = ?", sessionID).Updates(map[string]interface{}{
+		"status":         "stopped",
+		"desired_status": "stopped",
+	})
 	return m.reindexWaitlistPositions()
 }
 
@@ -350,53 +426,12 @@ func (m *Manager) ProcessWaitlist() {
 		return
 	}
 
-	logFile, err := os.OpenFile(logPath(session.ID), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		log.Printf("waitlist worker failed to open log file for session %d: %v", session.ID, err)
-		return
-	}
-
-	args := buildArgs(&session)
-	cmd := exec.Command("./bin/whatsrook", args...)
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	cmd.SysProcAttr = getSysProcAttr()
-
-	if err := cmd.Start(); err != nil {
-		logFile.Close()
+	if err := m.startProcessLocked(&session); err != nil {
 		log.Printf("waitlist worker failed to start process for session %d: %v", session.ID, err)
 		return
 	}
 
-	pid := cmd.Process.Pid
-
-	m.db.Model(&session).Updates(map[string]interface{}{
-		"pid":            pid,
-		"status":         "running",
-		"has_run_before": true,
-	})
 	m.db.Model(&nextEntry).Update("status", schema.WaitlistStatusRunning)
-
-	m.processes[session.ID] = &ManagedProcess{Cmd: cmd, LogFile: logFile}
-
-	go func(sID uint, c *exec.Cmd, f *os.File) {
-		waitErr := c.Wait()
-		m.mu.Lock()
-		delete(m.processes, sID)
-		m.mu.Unlock()
-		f.Close()
-
-		status := "stopped"
-		if waitErr != nil {
-			status = "crashed"
-		}
-		m.db.Model(&schema.Session{}).Where("id = ?", sID).Updates(map[string]interface{}{
-			"status": status,
-			"pid":    nil,
-		})
-		go m.ProcessWaitlist()
-	}(session.ID, cmd, logFile)
-
 	m.reindexWaitlistPositions()
 }
 

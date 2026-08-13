@@ -34,6 +34,9 @@ type Session struct {
 
 	Status string `gorm:"index;not null;default:'stopped'" json:"status"` // running, stopped, crashed
 
+	DesiredStatus string `gorm:"index;not null;default:'stopped'" json:"desired_status"` // running, stopped
+	AutoRestart   bool   `gorm:"not null" json:"auto_restart"`
+
 	Verbose   bool `gorm:"default:false" json:"verbose"`
 	NoSkipOld bool `gorm:"default:false" json:"no_skip_old"`
 

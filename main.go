@@ -47,8 +47,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to init process manager: %v", err)
 	}
-	if err := procManager.ReconcileOnBoot(); err != nil {
-		log.Printf("warning: failed to reconcile process states: %v", err)
+	if err := procManager.ReconcileAndRecoverOnBoot(); err != nil {
+		log.Printf("warning: failed to reconcile and recover process states: %v", err)
 	}
 
 	e := echo.New()

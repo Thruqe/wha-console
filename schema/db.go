@@ -62,5 +62,28 @@ func NewDB(cfg DBConfig) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	if err := runMigrations(db); err != nil {
+		return nil, err
+	}
+
 	return db, nil
+}
+
+func runMigrations(db *gorm.DB) error {
+	// Backfill auto_restart for existing sessions where it was NULL
+	if err := db.Model(&Session{}).Where("auto_restart IS NULL").Update("auto_restart", true).Error; err != nil {
+		log.Printf("schema migration note: auto_restart backfill skipped: %v", err)
+	}
+
+	// Backfill desired_status for existing sessions where status was 'running'
+	if err := db.Model(&Session{}).Where("status = ? AND (desired_status IS NULL OR desired_status = '' OR desired_status = 'stopped')", "running").Update("desired_status", "running").Error; err != nil {
+		log.Printf("schema migration note: desired_status backfill skipped: %v", err)
+	}
+
+	// Ensure any remaining sessions have a valid default desired_status
+	if err := db.Model(&Session{}).Where("desired_status IS NULL OR desired_status = ''").Update("desired_status", "stopped").Error; err != nil {
+		log.Printf("schema migration note: desired_status default backfill skipped: %v", err)
+	}
+
+	return nil
 }

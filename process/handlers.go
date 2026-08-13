@@ -84,13 +84,15 @@ func (h *Handler) Start(c echo.Context) error {
 	}
 
 	session := schema.Session{
-		UserID:      userID,
-		Name:        req.Name,
-		PhoneNumber: req.PhoneNumber,
-		AuthType:    req.AuthType,
-		Client:      req.Client,
-		DatabaseURL: req.DatabaseURL,
-		Status:      "stopped", // actual process spawning comes later
+		UserID:        userID,
+		Name:          req.Name,
+		PhoneNumber:   req.PhoneNumber,
+		AuthType:      req.AuthType,
+		Client:        req.Client,
+		DatabaseURL:   req.DatabaseURL,
+		Status:        "stopped", // actual process spawning comes later
+		DesiredStatus: "stopped",
+		AutoRestart:   true,
 	}
 
 	if err := h.DB.Create(&session).Error; err != nil {
@@ -120,6 +122,10 @@ func (h *Handler) RunProcess(c echo.Context) error {
 	if h.Manager.IsRunning(session.ID) {
 		return c.JSON(http.StatusOK, map[string]string{"message": "already running"})
 	}
+
+	// Track desired running state
+	h.DB.Model(&session).Update("desired_status", "running")
+	session.DesiredStatus = "running"
 
 	// Check system RAM and process limit
 	limits := h.Manager.GetLimits()
@@ -216,6 +222,9 @@ func (h *Handler) StopProcess(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "process not found"})
 	}
 
+	// Explicitly mark desired status as stopped when user stops the process
+	h.DB.Model(&session).Update("desired_status", "stopped")
+
 	sessionID := session.ID
 	if err := h.Manager.Stop(sessionID); err != nil {
 		return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
@@ -247,6 +256,9 @@ func (h *Handler) UpdateSettings(c echo.Context) error {
 	}
 	if req.NoSkipOld != nil {
 		updates["no_skip_old"] = *req.NoSkipOld
+	}
+	if req.AutoRestart != nil {
+		updates["auto_restart"] = *req.AutoRestart
 	}
 
 	if len(updates) == 0 {
@@ -443,7 +455,10 @@ func (h *Handler) LogoutSession(c echo.Context) error {
 		return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
 	}
 
-	h.DB.Model(&session).Update("status", "logged_out")
+	h.DB.Model(&session).Updates(map[string]interface{}{
+		"status":         "logged_out",
+		"desired_status": "stopped",
+	})
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "logged out"})
 }
