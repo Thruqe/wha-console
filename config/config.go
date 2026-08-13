@@ -18,6 +18,9 @@ type Config struct {
 	WebAuthnRPDisplayName string
 	WebAuthnRPOrigins     []string
 	RedisAddr             string
+	RAMPerProcessMB       uint64
+	MaxRAMPercent         float64
+	MaxProcesses          int
 }
 
 // config/config.go
@@ -37,6 +40,9 @@ func Load() *Config {
 		WebAuthnRPDisplayName: getEnv("WEBAUTHN_RP_DISPLAY_NAME", "wha-console"),
 		WebAuthnRPOrigins:     origins,
 		RedisAddr:             getEnv("REDIS_ADDR", "localhost:6379"),
+		RAMPerProcessMB:       getUint64Env("RAM_PER_PROCESS_MB", 150),
+		MaxRAMPercent:         getFloat64Env("MAX_RAM_PERCENT", 80.0),
+		MaxProcesses:          getIntEnv("MAX_PROCESSES", 0),
 	}
 }
 
@@ -69,6 +75,42 @@ func getBoolEnv(key string, fallback bool) bool {
 		return fallback
 	}
 	parsed, err := strconv.ParseBool(val)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func getIntEnv(key string, fallback int) int {
+	val := os.Getenv(key)
+	if val == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(val)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func getUint64Env(key string, fallback uint64) uint64 {
+	val := os.Getenv(key)
+	if val == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseUint(val, 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func getFloat64Env(key string, fallback float64) float64 {
+	val := os.Getenv(key)
+	if val == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseFloat(val, 64)
 	if err != nil {
 		return fallback
 	}

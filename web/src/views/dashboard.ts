@@ -1,6 +1,6 @@
-import { checkAuth, logout, api, runProcess, stopProcess, deleteProcess } from "../api";
+import { checkAuth, logout, api, runProcess, stopProcess, deleteProcess, getLimits, cancelWaitlist } from "../api";
 import { navigate } from "../router";
-import { icon, Terminal, Plus, Play, Square, Trash2, LogOut, Server, Info, ShieldCheck, User, Code } from "../icons";
+import { icon, Terminal, Plus, Play, Square, Trash2, LogOut, Server, Info, ShieldCheck, User, Code, Clock } from "../icons";
 import { openProcessConfigModal } from "../components/process-config-modal";
 import { openAboutModal } from "../components/about-modal";
 import { openCookiePreferencesModal } from "../components/cookie-banner";
@@ -16,8 +16,23 @@ interface ProcessItem {
   phone_masked: string;
   auth_type: string;
   client: string;
-  status: "running" | "stopped" | "crashed";
+  status: "running" | "stopped" | "crashed" | "queued";
+  waitlist_position?: number;
   created_at: string;
+}
+
+interface SystemLimits {
+  total_ram_mb: number;
+  available_ram_mb: number;
+  used_ram_mb: number;
+  used_ram_percent: number;
+  ram_per_process_mb: number;
+  max_ram_percent: number;
+  max_allowed_processes: number;
+  running_processes: number;
+  waitlist_count: number;
+  limit_reached: boolean;
+  message?: string;
 }
 
 export async function renderDashboardView() {
@@ -30,13 +45,20 @@ export async function renderDashboardView() {
   trackEvent("page_view", "dashboard");
 
   const app = document.getElementById("app")!;
-  app.innerHTML = `<div class="dash-wrapper"><div class="dash-main">${renderSpinner("Loading processes...")}</div></div>`;
+  app.innerHTML = `<div class="dash-wrapper"><div class="dash-main">${renderSpinner("Loading processes & system metrics...")}</div></div>`;
 
   let processes: ProcessItem[] = [];
+  let limits: SystemLimits | null = null;
+
   try {
-    processes = await api.listProcesses();
+    const [pRes, lRes] = await Promise.all([
+      api.listProcesses(),
+      getLimits().catch(() => null),
+    ]);
+    processes = pRes;
+    limits = lRes;
   } catch (err) {
-    app.innerHTML = `<div class="dash-wrapper"><div class="dash-main"><p class="error">Failed to load processes: ${(err as Error).message}</p></div></div>`;
+    app.innerHTML = `<div class="dash-wrapper"><div class="dash-main"><p class="error">Failed to load dashboard: ${(err as Error).message}</p></div></div>`;
     return;
   }
 
@@ -64,6 +86,8 @@ export async function renderDashboardView() {
       </div>
 
       <div class="dash-main">
+        ${limits ? renderLimitsCard(limits) : ""}
+
         <div class="dash-title-row">
           <div>
             <h2>Processes</h2>
@@ -118,6 +142,23 @@ export async function renderDashboardView() {
       btn.disabled = true;
       try {
         await runProcess(String(p.id));
+        showToast("Process started", "success");
+        renderDashboardView();
+      } catch (err) {
+        const errMsg = (err as Error).message;
+        showToast(errMsg, "error");
+        btn.disabled = false;
+        renderDashboardView();
+      }
+    });
+
+    document.getElementById(`cancel-waitlist-${p.id}`)?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget as HTMLButtonElement;
+      btn.disabled = true;
+      try {
+        await cancelWaitlist(String(p.id));
+        showToast("Removed from waitlist", "info");
         renderDashboardView();
       } catch (err) {
         showToast((err as Error).message, "error");
@@ -166,6 +207,65 @@ export async function renderDashboardView() {
   });
 }
 
+function renderLimitsCard(limits: SystemLimits): string {
+  const ramUsedGB = (limits.used_ram_mb / 1024).toFixed(1);
+  const ramTotalGB = (limits.total_ram_mb / 1024).toFixed(1);
+  const ramAvailMB = limits.available_ram_mb;
+
+  return `
+    <div class="limits-card ${limits.limit_reached ? 'limit-active' : ''}">
+      <div class="limits-header">
+        <div class="limits-title">
+          ${icon(Server, { size: 18 })}
+          <span>System Memory & Process Limits</span>
+          ${limits.limit_reached ? `<span class="limit-badge-alert">Limit Reached</span>` : `<span class="limit-badge-ok">Optimal</span>`}
+        </div>
+        <div class="limits-meta">
+          <span>Allocation: <strong>${limits.ram_per_process_mb} MB</strong> / whatsrook</span>
+        </div>
+      </div>
+      
+      <div class="limits-grid">
+        <div class="limits-stat-item">
+          <span class="stat-label">RAM Usage</span>
+          <div class="stat-value-row">
+            <strong>${ramUsedGB} GB / ${ramTotalGB} GB</strong>
+            <small>(${ramAvailMB} MB Free)</small>
+          </div>
+          <div class="ram-bar-track">
+            <div class="ram-bar-fill" style="width: ${Math.min(100, limits.used_ram_percent)}%;"></div>
+          </div>
+        </div>
+
+        <div class="limits-stat-item">
+          <span class="stat-label">Active Processes</span>
+          <div class="stat-value-row">
+            <strong>${limits.running_processes} / ${limits.max_allowed_processes}</strong>
+            <small>Max Allowed</small>
+          </div>
+          <div class="ram-bar-track">
+            <div class="ram-bar-fill processes-fill" style="width: ${Math.min(100, (limits.running_processes / limits.max_allowed_processes) * 100)}%;"></div>
+          </div>
+        </div>
+
+        <div class="limits-stat-item">
+          <span class="stat-label">Waitlist Queue</span>
+          <div class="stat-value-row">
+            <strong>${limits.waitlist_count}</strong>
+            <small>In Queue</small>
+          </div>
+        </div>
+      </div>
+
+      ${limits.limit_reached ? `
+        <div class="limits-notice">
+          ${limits.message || "server limit reached, please we aren't able to provide enough services to run your session, we are working to increase usage limits for everyone"}
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
 function renderEmptyState(): string {
   return `
     <div class="empty-state">
@@ -188,18 +288,23 @@ function renderProcessGrid(processes: ProcessItem[]): string {
 }
 
 function renderProcessCard(p: ProcessItem): string {
+  const isQueued = p.status === "queued";
+  const posBadge = isQueued && p.waitlist_position ? `Queued #${p.waitlist_position}` : p.status;
+
   return `
-    <div class="process-card" data-id="${p.id}" style="cursor: pointer;">
+    <div class="process-card ${isQueued ? 'card-queued' : ''}" data-id="${p.id}" style="cursor: pointer;">
       <div class="process-card-header">
         <div class="process-name">${icon(Server, { size: 16 })} ${p.name}</div>
-        <span class="status-pill ${p.status}">${p.status}</span>
+        <span class="status-pill ${p.status}">${posBadge}</span>
       </div>
       <div class="process-meta">${p.phone_masked} · ${p.client}</div>
       <div class="process-actions">
         ${p.status === "running"
-      ? `<button id="stop-${p.id}">${icon(Square, { size: 14 })} Stop</button>`
-      : `<button id="start-${p.id}">${icon(Play, { size: 14 })} Start</button>`
-    }
+          ? `<button id="stop-${p.id}">${icon(Square, { size: 14 })} Stop</button>`
+          : isQueued
+            ? `<button id="cancel-waitlist-${p.id}" class="btn-warning">${icon(Clock, { size: 14 })} Leave Queue</button>`
+            : `<button id="start-${p.id}">${icon(Play, { size: 14 })} Start</button>`
+        }
         <button id="delete-${p.id}">${icon(Trash2, { size: 14 })} Delete</button>
       </div>
     </div>

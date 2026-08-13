@@ -146,3 +146,15 @@ export function clearProcessLogs(id: string) {
 export function logoutProcess(id: string) {
     return request(`/processes/${id}/logout`, { method: "POST" });
 }
+
+export function getLimits() {
+    return request("/limits");
+}
+
+export function getWaitlist() {
+    return request("/processes/waitlist");
+}
+
+export function cancelWaitlist(id: string) {
+    return request(`/processes/${id}/waitlist`, { method: "DELETE" });
+}

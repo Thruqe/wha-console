@@ -40,53 +40,65 @@ func (r CreateRequest) Validate() error {
 
 // CardResponse is what the dashboard list shows — phone number masked.
 type CardResponse struct {
-	ID          uint      `json:"id"`
-	Name        string    `json:"name"`
-	PhoneMasked string    `json:"phone_masked"`
-	AuthType    string    `json:"auth_type"`
-	Client      string    `json:"client"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID               uint      `json:"id"`
+	Name             string    `json:"name"`
+	PhoneMasked      string    `json:"phone_masked"`
+	AuthType         string    `json:"auth_type"`
+	Client           string    `json:"client"`
+	Status           string    `json:"status"`
+	WaitlistPosition int       `json:"waitlist_position,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
-func toCardResponse(s schema.Session) CardResponse {
+func toCardResponse(s schema.Session, waitlistPos ...int) CardResponse {
+	pos := 0
+	if len(waitlistPos) > 0 {
+		pos = waitlistPos[0]
+	}
 	return CardResponse{
-		ID:          s.ID,
-		Name:        s.Name,
-		PhoneMasked: s.PhoneNumberMasked(),
-		AuthType:    string(s.AuthType),
-		Client:      string(s.Client),
-		Status:      s.Status,
-		CreatedAt:   s.CreatedAt,
+		ID:               s.ID,
+		Name:             s.Name,
+		PhoneMasked:      s.PhoneNumberMasked(),
+		AuthType:         string(s.AuthType),
+		Client:           string(s.Client),
+		Status:           s.Status,
+		WaitlistPosition: pos,
+		CreatedAt:        s.CreatedAt,
 	}
 }
 
 // DetailResponse is the full view — shown only inside the process's own page.
 type DetailResponse struct {
-	ID           uint      `json:"id"`
-	Name         string    `json:"name"`
-	PhoneNumber  string    `json:"phone_number"`
-	AuthType     string    `json:"auth_type"`
-	Client       string    `json:"client"`
-	Status       string    `json:"status"`
-	Verbose      bool      `json:"verbose"`
-	NoSkipOld    bool      `json:"no_skip_old"`
-	HasRunBefore bool      `json:"has_run_before"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID               uint      `json:"id"`
+	Name             string    `json:"name"`
+	PhoneNumber      string    `json:"phone_number"`
+	AuthType         string    `json:"auth_type"`
+	Client           string    `json:"client"`
+	Status           string    `json:"status"`
+	WaitlistPosition int       `json:"waitlist_position,omitempty"`
+	Verbose          bool      `json:"verbose"`
+	NoSkipOld        bool      `json:"no_skip_old"`
+	HasRunBefore     bool      `json:"has_run_before"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
-func toDetailResponse(s schema.Session) DetailResponse {
+func toDetailResponse(s schema.Session, waitlistPos ...int) DetailResponse {
+	pos := 0
+	if len(waitlistPos) > 0 {
+		pos = waitlistPos[0]
+	}
 	return DetailResponse{
-		ID:           s.ID,
-		Name:         s.Name,
-		PhoneNumber:  s.PhoneNumber,
-		AuthType:     string(s.AuthType),
-		Client:       string(s.Client),
-		Status:       s.Status,
-		Verbose:      s.Verbose,
-		NoSkipOld:    s.NoSkipOld,
-		HasRunBefore: s.HasRunBefore,
-		CreatedAt:    s.CreatedAt,
+		ID:               s.ID,
+		Name:             s.Name,
+		PhoneNumber:      s.PhoneNumber,
+		AuthType:         string(s.AuthType),
+		Client:           string(s.Client),
+		Status:           s.Status,
+		WaitlistPosition: pos,
+		Verbose:          s.Verbose,
+		NoSkipOld:        s.NoSkipOld,
+		HasRunBefore:     s.HasRunBefore,
+		CreatedAt:        s.CreatedAt,
 	}
 }
 

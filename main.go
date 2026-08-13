@@ -43,7 +43,7 @@ func main() {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	procManager, err := process.NewManager(db)
+	procManager, err := process.NewManager(db, cfg)
 	if err != nil {
 		log.Fatalf("failed to init process manager: %v", err)
 	}
@@ -89,19 +89,15 @@ func main() {
 	waGroup.POST("/login/finish", waHandler.FinishLogin)
 
 	processHandler := process.NewHandler(db, procManager)
+	api.GET("/limits", processHandler.GetLimits, authHandler.RequireAuth)
+
 	processGroup := api.Group("/processes", authHandler.RequireAuth)
 	processGroup.GET("", processHandler.List)
 	processGroup.POST("", processHandler.Start)
-	processGroup.DELETE("/:id", processHandler.Stop)
-
-	processGroup.GET("", processHandler.List)
+	processGroup.GET("/limits", processHandler.GetLimits)
+	processGroup.GET("/waitlist", processHandler.GetWaitlist)
+	processGroup.DELETE("/:id/waitlist", processHandler.CancelWaitlist)
 	processGroup.GET("/:id", processHandler.Get)
-	processGroup.POST("", processHandler.Start)
-	processGroup.DELETE("/:id", processHandler.Stop)
-
-	processGroup.GET("", processHandler.List)
-	processGroup.GET("/:id", processHandler.Get)
-	processGroup.POST("", processHandler.Start)
 	processGroup.PATCH("/:id/settings", processHandler.UpdateSettings)
 	processGroup.DELETE("/:id", processHandler.Delete)
 	processGroup.POST("/:id/update", processHandler.CheckUpdate)

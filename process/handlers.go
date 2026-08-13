@@ -47,7 +47,8 @@ func (h *Handler) List(c echo.Context) error {
 
 	cards := make([]CardResponse, len(sessions))
 	for i, s := range sessions {
-		cards[i] = toCardResponse(s)
+		pos := h.Manager.GetWaitlistPosition(s.ID)
+		cards[i] = toCardResponse(s, pos)
 	}
 	return c.JSON(http.StatusOK, cards)
 }
@@ -64,7 +65,8 @@ func (h *Handler) Get(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "process not found"})
 	}
 
-	return c.JSON(http.StatusOK, toDetailResponse(session))
+	pos := h.Manager.GetWaitlistPosition(session.ID)
+	return c.JSON(http.StatusOK, toDetailResponse(session, pos))
 }
 
 func (h *Handler) Start(c echo.Context) error {
@@ -100,7 +102,6 @@ func (h *Handler) Start(c echo.Context) error {
 
 func (h *Handler) Stop(c echo.Context) error {
 	id := c.Param("id")
-	// TODO: actually stop the running process once exec.Command spawning exists
 	return c.JSON(http.StatusOK, map[string]string{"message": "stopped " + id})
 }
 
@@ -116,11 +117,91 @@ func (h *Handler) RunProcess(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "process not found"})
 	}
 
+	if h.Manager.IsRunning(session.ID) {
+		return c.JSON(http.StatusOK, map[string]string{"message": "already running"})
+	}
+
+	// Check system RAM and process limit
+	limits := h.Manager.GetLimits()
+	if limits.LimitReached {
+		entry, err := h.Manager.EnqueueWaitlist(session.ID, userID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to queue session in waitlist"})
+		}
+
+		return c.JSON(http.StatusTooManyRequests, map[string]interface{}{
+			"error":         ServerLimitReachedMessage,
+			"limit_reached": true,
+			"waitlist":      true,
+			"position":      entry.Position,
+			"limits":        limits,
+		})
+	}
+
 	if err := h.Manager.Start(&session); err != nil {
 		return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "started"})
+}
+
+func (h *Handler) GetLimits(c echo.Context) error {
+	limits := h.Manager.GetLimits()
+	return c.JSON(http.StatusOK, limits)
+}
+
+func (h *Handler) GetWaitlist(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	var entries []schema.WaitlistEntry
+	if err := h.DB.Preload("Session").Where("user_id = ? AND status = ?", userID, schema.WaitlistStatusQueued).Order("position asc").Find(&entries).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to fetch waitlist"})
+	}
+
+	type waitlistResponse struct {
+		ID          uint   `json:"id"`
+		SessionID   uint   `json:"session_id"`
+		SessionName string `json:"session_name"`
+		Position    int    `json:"position"`
+		Reason      string `json:"reason"`
+		CreatedAt   string `json:"created_at"`
+	}
+
+	res := make([]waitlistResponse, len(entries))
+	for i, e := range entries {
+		res[i] = waitlistResponse{
+			ID:          e.ID,
+			SessionID:   e.SessionID,
+			SessionName: e.Session.Name,
+			Position:    e.Position,
+			Reason:      e.Reason,
+			CreatedAt:   e.CreatedAt.Format(time.RFC3339),
+		}
+	}
+
+	return c.JSON(http.StatusOK, res)
+}
+
+func (h *Handler) CancelWaitlist(c echo.Context) error {
+	userID, ok := auth.UserIDFromContext(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	id := c.Param("id")
+	var session schema.Session
+	if err := h.DB.Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "process not found"})
+	}
+
+	if err := h.Manager.CancelWaitlist(session.ID, userID); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "removed from waitlist"})
 }
 
 func (h *Handler) StopProcess(c echo.Context) error {

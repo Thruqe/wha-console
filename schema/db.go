@@ -51,6 +51,7 @@ func NewDB(cfg DBConfig) (*gorm.DB, error) {
 	if err := db.AutoMigrate(
 		&User{},
 		&Session{},
+		&WaitlistEntry{},
 		&RefreshToken{},
 		&Credential{},
 		&TelemetryEvent{},

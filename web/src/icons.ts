@@ -5,7 +5,7 @@ import {
     X, Smartphone, QrCode, Database, Settings, RefreshCw, Info, Activity,
     Download, ArrowDown, WrapText, Code, Radio, Layers, Cpu, ShieldCheck,
     HelpCircle, Zap, CheckCircle2, Globe, FileText, ExternalLink, BookOpen,
-    Sliders, Check, Copy, User, MessageSquare, Send, Users, Phone, BarChart2, Key
+    Sliders, Check, Copy, User, MessageSquare, Send, Users, Phone, BarChart2, Key, Clock
 } from "lucide";
 
 export function icon(iconNode: any, options: { size?: number; class?: string } = {}) {
@@ -22,5 +22,5 @@ export {
     X, Smartphone, QrCode, Database, Settings, RefreshCw, Info, Activity,
     Download, ArrowDown, WrapText, Code, Radio, Layers, Cpu, ShieldCheck,
     HelpCircle, Zap, CheckCircle2, Globe, FileText, ExternalLink, BookOpen,
-    Sliders, Check, Copy, User, MessageSquare, Send, Users, Phone, BarChart2, Key
+    Sliders, Check, Copy, User, MessageSquare, Send, Users, Phone, BarChart2, Key, Clock
 };

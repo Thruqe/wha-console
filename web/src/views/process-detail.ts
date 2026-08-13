@@ -2,11 +2,11 @@ import { navigate } from "../router";
 import {
   checkAuth, api, updateProcessSettings, deleteProcess,
   stopProcess, runProcess, clearProcessLogs,
-  logoutProcess,
+  logoutProcess, cancelWaitlist,
 } from "../api";
 import {
   icon, ArrowLeft, Server, Terminal, Settings, Trash2, Info,
-  Square, Play, Download, ArrowDown,
+  Square, Play, Download, ArrowDown, Clock,
   LogOut, WrapText, Layers, Sliders, User, MessageSquare, Send, Users,
   BarChart2, Phone, Copy
 } from "../icons";
@@ -24,6 +24,7 @@ interface ProcessDetail {
   auth_type: string;
   client: string;
   status: string;
+  waitlist_position?: number;
   verbose: boolean;
   no_skip_old: boolean;
   has_run_before: boolean;
@@ -160,11 +161,15 @@ export async function renderProcessDetailView(params: Record<string, string>) {
         <div class="detail-header">
           <button type="button" class="detail-back" id="back-btn" title="Back to processes">${icon(ArrowLeft, { size: 18 })}</button>
           <div class="detail-title">${icon(Server, { size: 18 })} ${process.name}</div>
-          <span class="status-pill ${process.status}">${process.status}</span>
+          <span class="status-pill ${process.status}">
+            ${process.status === "queued" && process.waitlist_position ? `Queued #${process.waitlist_position}` : process.status}
+          </span>
           <div style="margin-left: auto; display: flex; gap: 8px;">
             ${process.status === "running"
         ? `<button type="button" class="outline" id="detail-stop-btn">${icon(Square, { size: 14 })} Stop</button>`
-        : `<button type="button" class="outline" id="detail-start-btn">${icon(Play, { size: 14 })} Start</button>`
+        : process.status === "queued"
+          ? `<button type="button" class="outline btn-warning" id="detail-cancel-waitlist-btn">${icon(Clock, { size: 14 })} Leave Queue</button>`
+          : `<button type="button" class="outline" id="detail-start-btn">${icon(Play, { size: 14 })} Start</button>`
       }
           </div>
         </div>
@@ -200,6 +205,18 @@ export async function renderProcessDetailView(params: Record<string, string>) {
     document.getElementById("detail-start-btn")?.addEventListener("click", async () => {
       try {
         await runProcess(String(process.id));
+        showToast("Process started", "success");
+        location.reload();
+      } catch (err) {
+        showToast((err as Error).message, "error");
+        location.reload();
+      }
+    });
+
+    document.getElementById("detail-cancel-waitlist-btn")?.addEventListener("click", async () => {
+      try {
+        await cancelWaitlist(String(process.id));
+        showToast("Removed from waitlist", "info");
         location.reload();
       } catch (err) {
         showToast((err as Error).message, "error");

@@ -13,6 +13,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"wha-console/config"
 	"wha-console/schema"
 )
 
@@ -27,25 +28,49 @@ type Manager struct {
 	mu        sync.Mutex
 	processes map[uint]*ManagedProcess
 	db        *gorm.DB
+	cfg       *config.Config
+	stopCh    chan struct{}
 }
 
-func NewManager(db *gorm.DB) (*Manager, error) {
+func NewManager(db *gorm.DB, cfg *config.Config) (*Manager, error) {
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		return nil, err
 	}
-	return &Manager{
+	m := &Manager{
 		processes: make(map[uint]*ManagedProcess),
 		db:        db,
-	}, nil
+		cfg:       cfg,
+		stopCh:    make(chan struct{}),
+	}
+
+	go m.startWaitlistWorker()
+	return m, nil
 }
 
 func logPath(sessionID uint) string {
 	return filepath.Join(logsDir, fmt.Sprintf("%d.log", sessionID))
 }
 
-// Start launches the whatsrook binary for a session. The child is placed in
-// its own process group with Pdeathsig set, so if this Go server dies for
-// any reason, the OS kernel kills the child immediately — no orphans.
+// RunningCount returns the current number of running child processes.
+func (m *Manager) RunningCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.processes)
+}
+
+// GetWaitlistCount returns the number of sessions currently queued in the waitlist.
+func (m *Manager) GetWaitlistCount() int {
+	var count int64
+	m.db.Model(&schema.WaitlistEntry{}).Where("status = ?", schema.WaitlistStatusQueued).Count(&count)
+	return int(count)
+}
+
+// GetLimits retrieves system memory status and process limits.
+func (m *Manager) GetLimits() SystemLimits {
+	return CalculateLimits(m.cfg, m.RunningCount(), m.GetWaitlistCount())
+}
+
+// Start launches the whatsrook binary for a session.
 func (m *Manager) Start(session *schema.Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -63,9 +88,7 @@ func (m *Manager) Start(session *schema.Session) error {
 	cmd := exec.Command("./bin/whatsrook", args...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Pdeathsig: syscall.SIGKILL,
-	}
+	cmd.SysProcAttr = getSysProcAttr()
 
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
@@ -105,12 +128,15 @@ func (m *Manager) Start(session *schema.Session) error {
 		}).Error; err != nil {
 			log.Printf("failed to update session %d status after exit: %v", session.ID, err)
 		}
+
+		// Whenever a process stops, try processing the waitlist for available slots
+		go m.ProcessWaitlist()
 	}()
 
 	return nil
 }
 
-// Stop sends SIGTERM to a running process, letting it shut down gracefully.
+// Stop sends SIGTERM to a running process.
 func (m *Manager) Stop(sessionID uint) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -123,7 +149,7 @@ func (m *Manager) Stop(sessionID uint) error {
 	return mp.Cmd.Process.Signal(syscall.SIGTERM)
 }
 
-// IsRunning checks the in-memory tracking map — the source of truth while the server is up.
+// IsRunning checks in-memory tracking map.
 func (m *Manager) IsRunning(sessionID uint) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -131,8 +157,9 @@ func (m *Manager) IsRunning(sessionID uint) bool {
 	return ok
 }
 
-// ShutdownAll gracefully stops every tracked process — call this on server shutdown.
+// ShutdownAll gracefully stops every tracked process.
 func (m *Manager) ShutdownAll() {
+	close(m.stopCh)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, mp := range m.processes {
@@ -140,13 +167,14 @@ func (m *Manager) ShutdownAll() {
 	}
 }
 
-// ReconcileOnBoot marks any session left as "running" from a previous server
-// instance as stopped — since Pdeathsig guarantees no child survives this
-// server dying, any "running" row at boot is necessarily stale.
+// ReconcileOnBoot cleans up stale process states from previous server instances.
 func (m *Manager) ReconcileOnBoot() error {
-	return m.db.Model(&schema.Session{}).
+	if err := m.db.Model(&schema.Session{}).
 		Where("status = ?", "running").
-		Updates(map[string]interface{}{"status": "stopped", "pid": nil}).Error
+		Updates(map[string]interface{}{"status": "stopped", "pid": nil}).Error; err != nil {
+		return err
+	}
+	return m.reindexWaitlistPositions()
 }
 
 func buildArgs(s *schema.Session) []string {
@@ -169,9 +197,7 @@ func buildArgs(s *schema.Session) []string {
 	return args
 }
 
-// Logout runs the whatsrook binary in logout mode for a session — this removes
-// the session's auth files, distinct from just deleting our DB record.
-// process/manager.go — update Logout
+// Logout runs whatsrook in logout mode for a session.
 func (m *Manager) Logout(session *schema.Session) error {
 	if m.IsRunning(session.ID) {
 		if err := m.Stop(session.ID); err != nil {
@@ -197,9 +223,7 @@ func (m *Manager) Logout(session *schema.Session) error {
 	}
 
 	cmd := exec.Command("./bin/whatsrook", args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Pdeathsig: syscall.SIGKILL,
-	}
+	cmd.SysProcAttr = getSysProcAttr()
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -209,10 +233,12 @@ func (m *Manager) Logout(session *schema.Session) error {
 	return nil
 }
 
-// Restart stops a running process and starts it again with current session
-// settings — used when behavior settings (verbose, no_skip_old) change,
-// since these are CLI flags baked in at launch, not hot-reloadable.
+// Restart stops a running process and starts it again.
 func (m *Manager) Restart(session *schema.Session) error {
+	return m.RestartSession(session)
+}
+
+func (m *Manager) RestartSession(session *schema.Session) error {
 	m.mu.Lock()
 	mp, ok := m.processes[session.ID]
 	m.mu.Unlock()
@@ -221,13 +247,10 @@ func (m *Manager) Restart(session *schema.Session) error {
 		return fmt.Errorf("process not running")
 	}
 
-	// Signal graceful stop and wait for the existing Wait() goroutine to clean up.
 	if err := mp.Cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		return fmt.Errorf("failed to stop process: %w", err)
 	}
 
-	// Poll until the manager's map no longer holds this session (set by the
-	// Wait() goroutine once the process actually exits), with a timeout.
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		m.mu.Lock()
@@ -247,4 +270,160 @@ func (m *Manager) Restart(session *schema.Session) error {
 	}
 
 	return m.Start(session)
+}
+
+// --- WAITLIST LOGIC ---
+
+// EnqueueWaitlist adds a session to the waitlist queue when server limits are reached.
+func (m *Manager) EnqueueWaitlist(sessionID uint, userID string) (*schema.WaitlistEntry, error) {
+	var existing schema.WaitlistEntry
+	if err := m.db.Where("session_id = ? AND status = ?", sessionID, schema.WaitlistStatusQueued).First(&existing).Error; err == nil {
+		return &existing, nil
+	}
+
+	var activeCount int64
+	m.db.Model(&schema.WaitlistEntry{}).Where("status = ?", schema.WaitlistStatusQueued).Count(&activeCount)
+
+	entry := schema.WaitlistEntry{
+		UserID:    userID,
+		SessionID: sessionID,
+		Position:  int(activeCount) + 1,
+		Status:    schema.WaitlistStatusQueued,
+		Reason:    ServerLimitReachedMessage,
+	}
+
+	if err := m.db.Create(&entry).Error; err != nil {
+		return nil, fmt.Errorf("failed to enqueue session in waitlist: %w", err)
+	}
+
+	m.db.Model(&schema.Session{}).Where("id = ?", sessionID).Update("status", "queued")
+	return &entry, nil
+}
+
+// CancelWaitlist removes a session from the waitlist.
+func (m *Manager) CancelWaitlist(sessionID uint, userID string) error {
+	var entry schema.WaitlistEntry
+	if err := m.db.Where("session_id = ? AND user_id = ? AND status = ?", sessionID, userID, schema.WaitlistStatusQueued).First(&entry).Error; err != nil {
+		return fmt.Errorf("session not found in waitlist")
+	}
+
+	if err := m.db.Model(&entry).Update("status", schema.WaitlistStatusCancelled).Error; err != nil {
+		return fmt.Errorf("failed to cancel waitlist entry: %w", err)
+	}
+
+	m.db.Model(&schema.Session{}).Where("id = ?", sessionID).Update("status", "stopped")
+	return m.reindexWaitlistPositions()
+}
+
+// GetWaitlistPosition returns position of a session in queue (or 0 if not queued).
+func (m *Manager) GetWaitlistPosition(sessionID uint) int {
+	var entry schema.WaitlistEntry
+	if err := m.db.Where("session_id = ? AND status = ?", sessionID, schema.WaitlistStatusQueued).First(&entry).Error; err != nil {
+		return 0
+	}
+	return entry.Position
+}
+
+// ProcessWaitlist attempts to start the next queued session if limits permit.
+func (m *Manager) ProcessWaitlist() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	limits := CalculateLimits(m.cfg, len(m.processes), m.GetWaitlistCount())
+	if limits.LimitReached {
+		return
+	}
+
+	var nextEntry schema.WaitlistEntry
+	if err := m.db.Where("status = ?", schema.WaitlistStatusQueued).Order("position asc, id asc").First(&nextEntry).Error; err != nil {
+		return
+	}
+
+	var session schema.Session
+	if err := m.db.Where("id = ?", nextEntry.SessionID).First(&session).Error; err != nil {
+		m.db.Model(&nextEntry).Update("status", schema.WaitlistStatusCancelled)
+		return
+	}
+
+	if _, running := m.processes[session.ID]; running {
+		m.db.Model(&nextEntry).Update("status", schema.WaitlistStatusRunning)
+		return
+	}
+
+	logFile, err := os.OpenFile(logPath(session.ID), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Printf("waitlist worker failed to open log file for session %d: %v", session.ID, err)
+		return
+	}
+
+	args := buildArgs(&session)
+	cmd := exec.Command("./bin/whatsrook", args...)
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.SysProcAttr = getSysProcAttr()
+
+	if err := cmd.Start(); err != nil {
+		logFile.Close()
+		log.Printf("waitlist worker failed to start process for session %d: %v", session.ID, err)
+		return
+	}
+
+	pid := cmd.Process.Pid
+
+	m.db.Model(&session).Updates(map[string]interface{}{
+		"pid":            pid,
+		"status":         "running",
+		"has_run_before": true,
+	})
+	m.db.Model(&nextEntry).Update("status", schema.WaitlistStatusRunning)
+
+	m.processes[session.ID] = &ManagedProcess{Cmd: cmd, LogFile: logFile}
+
+	go func(sID uint, c *exec.Cmd, f *os.File) {
+		waitErr := c.Wait()
+		m.mu.Lock()
+		delete(m.processes, sID)
+		m.mu.Unlock()
+		f.Close()
+
+		status := "stopped"
+		if waitErr != nil {
+			status = "crashed"
+		}
+		m.db.Model(&schema.Session{}).Where("id = ?", sID).Updates(map[string]interface{}{
+			"status": status,
+			"pid":    nil,
+		})
+		go m.ProcessWaitlist()
+	}(session.ID, cmd, logFile)
+
+	m.reindexWaitlistPositions()
+}
+
+func (m *Manager) reindexWaitlistPositions() error {
+	var entries []schema.WaitlistEntry
+	if err := m.db.Where("status = ?", schema.WaitlistStatusQueued).Order("created_at asc, id asc").Find(&entries).Error; err != nil {
+		return err
+	}
+	for idx, entry := range entries {
+		pos := idx + 1
+		if entry.Position != pos {
+			m.db.Model(&entry).Update("position", pos)
+		}
+	}
+	return nil
+}
+
+func (m *Manager) startWaitlistWorker() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-m.stopCh:
+			return
+		case <-ticker.C:
+			m.ProcessWaitlist()
+		}
+	}
 }
