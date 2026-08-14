@@ -815,15 +815,15 @@ func (h *Handler) GetGroupsList(c echo.Context) error {
 
 	if sDB.Migrator().HasTable("cached_groups") {
 		type cachedGroupRow struct {
-			JID              string `gorm:"column:jid"`
-			Name             string `gorm:"column:name"`
-			Topic            string `gorm:"column:topic"`
-			OwnerJID         string `gorm:"column:owner_jid"`
-			CreatedAt        string `gorm:"column:created_at"`
-			ParticipantCount int    `gorm:"column:participant_count"`
-			AdminCount       int    `gorm:"column:admin_count"`
-			IsLocked         bool   `gorm:"column:is_locked"`
-			IsAnnounce       bool   `gorm:"column:is_announce"`
+			JID              string     `gorm:"column:jid"`
+			Name             string     `gorm:"column:name"`
+			Topic            string     `gorm:"column:topic"`
+			OwnerJID         string     `gorm:"column:owner_jid"`
+			CreatedAt        *time.Time `gorm:"column:created_at"`
+			ParticipantCount int        `gorm:"column:participant_count"`
+			AdminCount       int        `gorm:"column:admin_count"`
+			IsLocked         bool       `gorm:"column:is_locked"`
+			IsAnnounce       bool       `gorm:"column:is_announce"`
 		}
 		var rows []cachedGroupRow
 		sDB.Table("cached_groups").
@@ -854,7 +854,10 @@ func (h *Handler) GetGroupsList(c echo.Context) error {
 		}
 
 		for _, r := range rows {
-			createdStr := r.CreatedAt
+			createdStr := ""
+			if r.CreatedAt != nil && !r.CreatedAt.IsZero() {
+				createdStr = r.CreatedAt.Format("2006-01-02 15:04:05")
+			}
 			result = append(result, GroupItemResponse{
 				Name:         r.Name,
 				JID:          r.JID,
@@ -964,7 +967,7 @@ func (h *Handler) GetCommunitiesList(c echo.Context) error {
 		var sgCounts []subgroupCount
 		sDB.Table("cached_groups").
 			Select("parent_jid, COUNT(*) as subgroup_count").
-			Where("parent_jid != '' AND our_jid LIKE ?", "%"+cleanPhone+"%").
+			Where("parent_jid IS NOT NULL AND parent_jid != '' AND our_jid LIKE ?", "%"+cleanPhone+"%").
 			Group("parent_jid").
 			Find(&sgCounts)
 
