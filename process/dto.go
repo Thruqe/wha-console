@@ -162,6 +162,9 @@ type GroupItemResponse struct {
 	JID          string `json:"jid"`
 	MembersCount int    `json:"membersCount"`
 	IsAdmin      bool   `json:"isAdmin"`
+	IsSuperAdmin bool   `json:"isSuperAdmin"`
+	IsLocked     bool   `json:"isLocked"`
+	OwnerJID     string `json:"ownerJid"`
 	CreatedAt    string `json:"createdAt"`
 	Description  string `json:"description"`
 }

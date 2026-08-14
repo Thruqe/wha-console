@@ -483,7 +483,7 @@
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">
               <div style="display: flex; flex-direction: column; gap: 2px;">
                 <strong style="color: var(--text-h); font-size: 14px;">${e.name}</strong>
-                <span style="font-size: 12px; color: var(--text);">${e.membersCount} members ${e.isAdmin?`· Admin`:``}</span>
+                <span style="font-size: 12px; color: var(--text);">${e.membersCount} members · ${e.isSuperAdmin?`Super Admin`:e.isAdmin?`Admin`:`Member`}${e.isLocked?` · 🔒 Locked`:``}</span>
               </div>
               <button type="button" class="icon-btn" id="group-info-btn-${t}" title="View Group Details">
                 ${I(C,{size:16})}
@@ -533,19 +533,29 @@
           <span class="info-row-value">${e.membersCount} participants</span>
         </div>
         <div class="info-row">
-          <span class="info-row-label">Bot Admin Status</span>
-          <span class="frozen-pill">${e.isAdmin?`Admin`:`Member`}</span>
+          <span class="info-row-label">Bot Role</span>
+          <span class="frozen-pill">${e.isSuperAdmin?`Super Admin`:e.isAdmin?`Admin`:`Member`}</span>
         </div>
+        <div class="info-row">
+          <span class="info-row-label">Send Messages</span>
+          <span class="frozen-pill">${e.isLocked?`Admins only 🔒`:`All members`}</span>
+        </div>
+        ${e.ownerJid?`
+        <div class="info-row">
+          <span class="info-row-label">Owner JID</span>
+          <span class="info-row-value" style="font-family: var(--mono); font-size: 12px;">${e.ownerJid}</span>
+        </div>`:``}
         <div class="info-row">
           <span class="info-row-label">Created Date</span>
           <span class="info-row-value">${e.createdAt}</span>
         </div>
       </div>
 
+      ${e.description?`
       <div style="background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-top: 10px;">
         <strong style="font-size: 12px; color: var(--text-h); display: block; margin-bottom: 4px;">Description</strong>
-        <p style="font-size: 13px; color: var(--text); margin: 0;">${e.description}</p>
-      </div>
+        <p style="font-size: 13px; color: var(--text); margin: 0; white-space: pre-wrap;">${e.description}</p>
+      </div>`:``}
     </div>
 
     <div class="modal-footer">
@@ -698,14 +708,20 @@
           </span>
         </div>
         <div class="info-row">
-          <span class="info-row-label">Sub-Groups Count</span>
-          <span class="info-row-value">${e.subGroupsCount} groups</span>
+          <span class="info-row-label">Linked Sub-Groups</span>
+          <span class="info-row-value">${e.subGroupsCount} group${e.subGroupsCount===1?``:`s`}</span>
         </div>
         <div class="info-row">
           <span class="info-row-label">Total Members</span>
           <span class="info-row-value">${e.totalMembers} members</span>
         </div>
       </div>
+
+      ${e.description?`
+      <div style="background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-top: 10px;">
+        <strong style="font-size: 12px; color: var(--text-h); display: block; margin-bottom: 4px;">Description</strong>
+        <p style="font-size: 13px; color: var(--text); margin: 0; white-space: pre-wrap;">${e.description}</p>
+      </div>`:``}
     </div>
 
     <div class="modal-footer">

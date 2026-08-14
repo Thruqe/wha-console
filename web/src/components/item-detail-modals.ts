@@ -8,6 +8,9 @@ interface GroupItem {
   jid: string;
   membersCount: number;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
+  isLocked: boolean;
+  ownerJid: string;
   createdAt: string;
   description: string;
 }
@@ -51,7 +54,7 @@ export function openGroupsListModal(groupsList: GroupItem[] = []) {
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">
               <div style="display: flex; flex-direction: column; gap: 2px;">
                 <strong style="color: var(--text-h); font-size: 14px;">${g.name}</strong>
-                <span style="font-size: 12px; color: var(--text);">${g.membersCount} members ${g.isAdmin ? "· Admin" : ""}</span>
+                <span style="font-size: 12px; color: var(--text);">${g.membersCount} members · ${g.isSuperAdmin ? "Super Admin" : g.isAdmin ? "Admin" : "Member"}${g.isLocked ? " · 🔒 Locked" : ""}</span>
               </div>
               <button type="button" class="icon-btn" id="group-info-btn-${idx}" title="View Group Details">
                 ${icon(Info, { size: 16 })}
@@ -115,19 +118,29 @@ function openGroupDetailModal(g: GroupItem) {
           <span class="info-row-value">${g.membersCount} participants</span>
         </div>
         <div class="info-row">
-          <span class="info-row-label">Bot Admin Status</span>
-          <span class="frozen-pill">${g.isAdmin ? "Admin" : "Member"}</span>
+          <span class="info-row-label">Bot Role</span>
+          <span class="frozen-pill">${g.isSuperAdmin ? "Super Admin" : g.isAdmin ? "Admin" : "Member"}</span>
         </div>
+        <div class="info-row">
+          <span class="info-row-label">Send Messages</span>
+          <span class="frozen-pill">${g.isLocked ? "Admins only 🔒" : "All members"}</span>
+        </div>
+        ${g.ownerJid ? `
+        <div class="info-row">
+          <span class="info-row-label">Owner JID</span>
+          <span class="info-row-value" style="font-family: var(--mono); font-size: 12px;">${g.ownerJid}</span>
+        </div>` : ""}
         <div class="info-row">
           <span class="info-row-label">Created Date</span>
           <span class="info-row-value">${g.createdAt}</span>
         </div>
       </div>
 
+      ${g.description ? `
       <div style="background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-top: 10px;">
         <strong style="font-size: 12px; color: var(--text-h); display: block; margin-bottom: 4px;">Description</strong>
-        <p style="font-size: 13px; color: var(--text); margin: 0;">${g.description}</p>
-      </div>
+        <p style="font-size: 13px; color: var(--text); margin: 0; white-space: pre-wrap;">${g.description}</p>
+      </div>` : ""}
     </div>
 
     <div class="modal-footer">
@@ -336,14 +349,20 @@ function openCommunityDetailModal(c: CommunityItem) {
           </span>
         </div>
         <div class="info-row">
-          <span class="info-row-label">Sub-Groups Count</span>
-          <span class="info-row-value">${c.subGroupsCount} groups</span>
+          <span class="info-row-label">Linked Sub-Groups</span>
+          <span class="info-row-value">${c.subGroupsCount} group${c.subGroupsCount !== 1 ? "s" : ""}</span>
         </div>
         <div class="info-row">
           <span class="info-row-label">Total Members</span>
           <span class="info-row-value">${c.totalMembers} members</span>
         </div>
       </div>
+
+      ${c.description ? `
+      <div style="background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-top: 10px;">
+        <strong style="font-size: 12px; color: var(--text-h); display: block; margin-bottom: 4px;">Description</strong>
+        <p style="font-size: 13px; color: var(--text); margin: 0; white-space: pre-wrap;">${c.description}</p>
+      </div>` : ""}
     </div>
 
     <div class="modal-footer">

@@ -656,7 +656,11 @@ func (h *Handler) GetBotStats(c echo.Context) error {
 	}
 
 	var groupsCount int64 = 0
-	if hasGroupDetails {
+	hasCachedGroups := sDB.Migrator().HasTable("cached_groups")
+	if hasCachedGroups {
+		sDB.Table("cached_groups").Where("our_jid LIKE ? AND is_community = ?", "%"+cleanPhone+"%", false).Count(&groupsCount)
+	}
+	if groupsCount == 0 && hasGroupDetails {
 		sDB.Table("group_details").Where("is_announce = ?", false).Count(&groupsCount)
 	}
 	if groupsCount == 0 && hasGroupStats {
@@ -667,9 +671,13 @@ func (h *Handler) GetBotStats(c echo.Context) error {
 	}
 
 	var communitiesCount int64 = 0
-	if hasGroupDetails {
+	if hasCachedGroups {
+		sDB.Table("cached_groups").Where("our_jid LIKE ? AND is_community = ?", "%"+cleanPhone+"%", true).Count(&communitiesCount)
+	}
+	if communitiesCount == 0 && hasGroupDetails {
 		sDB.Table("group_details").Where("is_announce = ?", true).Count(&communitiesCount)
 	}
+
 
 	var messagesSent int64 = 0
 	var messagesReceived int64 = 0
@@ -803,7 +811,65 @@ func (h *Handler) GetGroupsList(c echo.Context) error {
 	sDB := openSessionDB(session.DatabaseURL, h.DB)
 	result := make([]GroupItemResponse, 0)
 
-	if sDB.Migrator().HasTable("group_details") {
+	cleanPhone := session.PhoneNumber
+
+	if sDB.Migrator().HasTable("cached_groups") {
+		type cachedGroupRow struct {
+			JID              string `gorm:"column:jid"`
+			Name             string `gorm:"column:name"`
+			Topic            string `gorm:"column:topic"`
+			OwnerJID         string `gorm:"column:owner_jid"`
+			CreatedAt        string `gorm:"column:created_at"`
+			ParticipantCount int    `gorm:"column:participant_count"`
+			AdminCount       int    `gorm:"column:admin_count"`
+			IsLocked         bool   `gorm:"column:is_locked"`
+			IsAnnounce       bool   `gorm:"column:is_announce"`
+		}
+		var rows []cachedGroupRow
+		sDB.Table("cached_groups").
+			Where("our_jid LIKE ? AND is_community = ?", "%"+cleanPhone+"%", false).
+			Find(&rows)
+
+		// Build a set of group JIDs where the bot is an admin
+		adminJIDs := map[string]bool{}
+		superAdminJIDs := map[string]bool{}
+		if sDB.Migrator().HasTable("cached_group_participants") {
+			type participantRow struct {
+				GroupJID     string `gorm:"column:group_jid"`
+				IsAdmin      bool   `gorm:"column:is_admin"`
+				IsSuperAdmin bool   `gorm:"column:is_super_admin"`
+			}
+			var parts []participantRow
+			sDB.Table("cached_group_participants").
+				Where("our_jid LIKE ? AND user_jid LIKE ?", "%"+cleanPhone+"%", "%"+cleanPhone+"%").
+				Find(&parts)
+			for _, p := range parts {
+				if p.IsAdmin {
+					adminJIDs[p.GroupJID] = true
+				}
+				if p.IsSuperAdmin {
+					superAdminJIDs[p.GroupJID] = true
+				}
+			}
+		}
+
+		for _, r := range rows {
+			createdStr := r.CreatedAt
+			result = append(result, GroupItemResponse{
+				Name:         r.Name,
+				JID:          r.JID,
+				MembersCount: r.ParticipantCount,
+				IsAdmin:      adminJIDs[r.JID] || superAdminJIDs[r.JID],
+				IsSuperAdmin: superAdminJIDs[r.JID],
+				IsLocked:     r.IsLocked,
+				OwnerJID:     r.OwnerJID,
+				CreatedAt:    createdStr,
+				Description:  r.Topic,
+			})
+		}
+	}
+
+	if len(result) == 0 && sDB.Migrator().HasTable("group_details") {
 		type groupRow struct {
 			GroupJID    string `gorm:"column:group_jid"`
 			Name        string `gorm:"column:name"`
@@ -875,29 +941,69 @@ func (h *Handler) GetCommunitiesList(c echo.Context) error {
 	}
 
 	sDB := openSessionDB(session.DatabaseURL, h.DB)
-	if !sDB.Migrator().HasTable("group_details") {
-		return c.JSON(http.StatusOK, []CommunityItemResponse{})
+	cleanPhone := session.PhoneNumber
+	result := make([]CommunityItemResponse, 0)
+
+	if sDB.Migrator().HasTable("cached_groups") {
+		type communityRow struct {
+			JID              string `gorm:"column:jid"`
+			Name             string `gorm:"column:name"`
+			Topic            string `gorm:"column:topic"`
+			ParticipantCount int    `gorm:"column:participant_count"`
+		}
+		var rows []communityRow
+		sDB.Table("cached_groups").
+			Where("our_jid LIKE ? AND is_community = ?", "%"+cleanPhone+"%", true).
+			Find(&rows)
+
+		// Count subgroups per community via parent_jid
+		type subgroupCount struct {
+			ParentJID     string `gorm:"column:parent_jid"`
+			SubgroupCount int    `gorm:"column:subgroup_count"`
+		}
+		var sgCounts []subgroupCount
+		sDB.Table("cached_groups").
+			Select("parent_jid, COUNT(*) as subgroup_count").
+			Where("parent_jid != '' AND our_jid LIKE ?", "%"+cleanPhone+"%").
+			Group("parent_jid").
+			Find(&sgCounts)
+
+		sgMap := map[string]int{}
+		for _, sg := range sgCounts {
+			sgMap[sg.ParentJID] = sg.SubgroupCount
+		}
+
+		for _, r := range rows {
+			result = append(result, CommunityItemResponse{
+				Name:           r.Name,
+				JID:            r.JID,
+				SubGroupsCount: sgMap[r.JID],
+				TotalMembers:   r.ParticipantCount,
+				Description:    r.Topic,
+			})
+		}
 	}
 
-	type groupRow struct {
-		GroupJID    string `gorm:"column:group_jid"`
-		Name        string `gorm:"column:name"`
-		MemberCount int    `gorm:"column:member_count"`
-		Topic       string `gorm:"column:topic"`
-	}
+	if len(result) == 0 && sDB.Migrator().HasTable("group_details") {
+		type groupRow struct {
+			GroupJID    string `gorm:"column:group_jid"`
+			Name        string `gorm:"column:name"`
+			MemberCount int    `gorm:"column:member_count"`
+			Topic       string `gorm:"column:topic"`
+		}
 
-	var rows []groupRow
-	sDB.Table("group_details").Where("is_announce = ?", true).Find(&rows)
+		var rows []groupRow
+		sDB.Table("group_details").Where("is_announce = ?", true).Find(&rows)
 
-	result := make([]CommunityItemResponse, 0, len(rows))
-	for _, r := range rows {
-		result = append(result, CommunityItemResponse{
-			Name:           r.Name,
-			JID:            r.GroupJID,
-			SubGroupsCount: 1,
-			TotalMembers:   r.MemberCount,
-			Description:    r.Topic,
-		})
+		for _, r := range rows {
+			result = append(result, CommunityItemResponse{
+				Name:           r.Name,
+				JID:            r.GroupJID,
+				SubGroupsCount: 1,
+				TotalMembers:   r.MemberCount,
+				Description:    r.Topic,
+			})
+		}
 	}
 
 	return c.JSON(http.StatusOK, result)
