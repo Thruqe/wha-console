@@ -30,6 +30,8 @@ go.work.sum
 # Database files
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 
 # Editor/IDE
 # .idea/
