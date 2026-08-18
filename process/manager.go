@@ -100,7 +100,7 @@ func (m *Manager) startProcessLocked(session *schema.Session) error {
 
 	pid := cmd.Process.Pid
 
-	if err := m.db.Model(session).Updates(map[string]interface{}{
+	if err := m.db.Model(session).Updates(map[string]any{
 		"pid":            pid,
 		"status":         "running",
 		"desired_status": "running",
@@ -126,7 +126,7 @@ func (m *Manager) startProcessLocked(session *schema.Session) error {
 			status = "crashed"
 		}
 
-		if err := m.db.Model(&schema.Session{}).Where("id = ?", sID).Updates(map[string]interface{}{
+		if err := m.db.Model(&schema.Session{}).Where("id = ?", sID).Updates(map[string]any{
 			"status": status,
 			"pid":    nil,
 		}).Error; err != nil {
@@ -366,7 +366,7 @@ func (m *Manager) EnqueueWaitlist(sessionID uint, userID string) (*schema.Waitli
 		return nil, fmt.Errorf("failed to enqueue session in waitlist: %w", err)
 	}
 
-	m.db.Model(&schema.Session{}).Where("id = ?", sessionID).Updates(map[string]interface{}{
+	m.db.Model(&schema.Session{}).Where("id = ?", sessionID).Updates(map[string]any{
 		"status":         "queued",
 		"desired_status": "running",
 	})
@@ -384,7 +384,7 @@ func (m *Manager) CancelWaitlist(sessionID uint, userID string) error {
 		return fmt.Errorf("failed to cancel waitlist entry: %w", err)
 	}
 
-	m.db.Model(&schema.Session{}).Where("id = ?", sessionID).Updates(map[string]interface{}{
+	m.db.Model(&schema.Session{}).Where("id = ?", sessionID).Updates(map[string]any{
 		"status":         "stopped",
 		"desired_status": "stopped",
 	})

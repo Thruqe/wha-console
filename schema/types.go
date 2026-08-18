@@ -7,7 +7,7 @@ import (
 )
 
 // JSON is a portable JSON column type that works on both Postgres (JSONB) and SQLite (TEXT).
-type JSON map[string]interface{}
+type JSON map[string]any
 
 func (j JSON) Value() (driver.Value, error) {
 	if j == nil {
@@ -16,7 +16,7 @@ func (j JSON) Value() (driver.Value, error) {
 	return json.Marshal(j)
 }
 
-func (j *JSON) Scan(value interface{}) error {
+func (j *JSON) Scan(value any) error {
 	if value == nil {
 		*j = JSON{}
 		return nil

@@ -135,7 +135,7 @@ func (h *Handler) RunProcess(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to queue session in waitlist"})
 		}
 
-		return c.JSON(http.StatusTooManyRequests, map[string]interface{}{
+		return c.JSON(http.StatusTooManyRequests, map[string]any{
 			"error":         ServerLimitReachedMessage,
 			"limit_reached": true,
 			"waitlist":      true,
@@ -250,7 +250,7 @@ func (h *Handler) UpdateSettings(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	updates := map[string]interface{}{}
+	updates := map[string]any{}
 	if req.Verbose != nil {
 		updates["verbose"] = *req.Verbose
 	}
@@ -277,7 +277,7 @@ func (h *Handler) UpdateSettings(c echo.Context) error {
 	restarted := false
 	if h.Manager.IsRunning(session.ID) {
 		if err := h.Manager.Restart(&session); err != nil {
-			return c.JSON(http.StatusOK, map[string]interface{}{
+			return c.JSON(http.StatusOK, map[string]any{
 				"process": toDetailResponse(session),
 				"warning": "settings saved, but restart failed: " + err.Error(),
 			})
@@ -285,7 +285,7 @@ func (h *Handler) UpdateSettings(c echo.Context) error {
 		restarted = true
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	return c.JSON(http.StatusOK, map[string]any{
 		"process":   toDetailResponse(session),
 		"restarted": restarted,
 	})
@@ -455,7 +455,7 @@ func (h *Handler) LogoutSession(c echo.Context) error {
 		return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
 	}
 
-	h.DB.Model(&session).Updates(map[string]interface{}{
+	h.DB.Model(&session).Updates(map[string]any{
 		"status":         "logged_out",
 		"desired_status": "stopped",
 	})
@@ -677,7 +677,6 @@ func (h *Handler) GetBotStats(c echo.Context) error {
 	if communitiesCount == 0 && hasGroupDetails {
 		sDB.Table("group_details").Where("is_announce = ?", true).Count(&communitiesCount)
 	}
-
 
 	var messagesSent int64 = 0
 	var messagesReceived int64 = 0

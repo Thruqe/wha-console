@@ -87,7 +87,7 @@ func (h *Handler) SaveCookiePreference(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save cookie preferences"})
 		}
 	} else {
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			"essential":         true,
 			"analytics":         req.Analytics,
 			"functional":        req.Functional,
@@ -128,7 +128,7 @@ func (h *Handler) GetCookiePreference(c echo.Context) error {
 	}
 
 	if consentID == "" {
-		return c.JSON(http.StatusOK, map[string]interface{}{
+		return c.JSON(http.StatusOK, map[string]any{
 			"exists":    false,
 			"essential": true,
 			"analytics": false,
@@ -137,7 +137,7 @@ func (h *Handler) GetCookiePreference(c echo.Context) error {
 
 	var pref schema.CookiePreference
 	if err := h.DB.Where("consent_id = ?", consentID).First(&pref).Error; err != nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
+		return c.JSON(http.StatusOK, map[string]any{
 			"exists":     false,
 			"consent_id": consentID,
 			"essential":  true,
@@ -145,7 +145,7 @@ func (h *Handler) GetCookiePreference(c echo.Context) error {
 		})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	return c.JSON(http.StatusOK, map[string]any{
 		"exists":     true,
 		"preference": pref,
 	})
@@ -234,7 +234,7 @@ func (h *Handler) GetMetricsSummary(c echo.Context) error {
 	var analyticsConsented int64
 	h.DB.Model(&schema.CookiePreference{}).Where("analytics = ?", true).Count(&analyticsConsented)
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	return c.JSON(http.StatusOK, map[string]any{
 		"total_telemetry_events": totalEvents,
 		"total_consent_records":  totalConsents,
 		"analytics_consented":    analyticsConsented,

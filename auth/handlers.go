@@ -194,7 +194,7 @@ func (h *AuthHandler) GitHubCallback(c echo.Context) error {
 		}
 	} else {
 		// Update profile info on login
-		h.DB.Model(&user).Updates(map[string]interface{}{
+		h.DB.Model(&user).Updates(map[string]any{
 			"avatar_url": ghUser.AvatarURL,
 			"email":      email,
 		})
@@ -353,7 +353,7 @@ func (h *AuthHandler) UpdateProfile(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
 	}
 
-	updates := map[string]interface{}{}
+	updates := map[string]any{}
 	if req.Username != "" && req.Username != user.Username {
 		updates["username"] = req.Username
 	}
