@@ -1,65 +1,44 @@
-// config/config.go
 package config
 
 import (
 	"os"
 	"strconv"
-	"strings"
 )
 
 type Config struct {
-	DevMode               bool
-	Port                  string
-	DBDriver              string
-	DBDSN                 string
-	JWTSecret             string
-	CookieSecure          bool
-	WebAuthnRPID          string
-	WebAuthnRPDisplayName string
-	WebAuthnRPOrigins     []string
-	RedisAddr             string
-	RAMPerProcessMB       uint64
-	MaxRAMPercent         float64
-	MaxProcesses          int
+	DevMode            bool
+	Port               string
+	DBDriver           string
+	DBDSN              string
+	JWTSecret          string
+	CookieSecure       bool
+	GitHubClientID     string
+	GitHubClientSecret string
+	GitHubRedirectURL  string
+	RedisAddr          string
+	RAMPerProcessMB    uint64
+	MaxRAMPercent      float64
+	MaxProcesses       int
 }
 
-// config/config.go
 func Load() *Config {
 	devMode := getBoolEnv("DEV_MODE", true)
 
-	origins := parseSliceEnv("WEBAUTHN_RP_ORIGINS", []string{"http://localhost:8080"})
-
 	return &Config{
-		DevMode:               devMode,
-		Port:                  getEnv("PORT", "8080"),
-		DBDriver:              getEnv("DB_DRIVER", "sqlite"),
-		DBDSN:                 getEnv("DB_DSN", "wha-console.db"),
-		JWTSecret:             getEnv("JWT_SECRET", ""),
-		CookieSecure:          !devMode,
-		WebAuthnRPID:          getEnv("WEBAUTHN_RP_ID", "localhost"),
-		WebAuthnRPDisplayName: getEnv("WEBAUTHN_RP_DISPLAY_NAME", "wha-console"),
-		WebAuthnRPOrigins:     origins,
-		RedisAddr:             getEnv("REDIS_ADDR", "localhost:6379"),
-		RAMPerProcessMB:       getUint64Env("RAM_PER_PROCESS_MB", 150),
-		MaxRAMPercent:         getFloat64Env("MAX_RAM_PERCENT", 80.0),
-		MaxProcesses:          getIntEnv("MAX_PROCESSES", 0),
+		DevMode:            devMode,
+		Port:               getEnv("PORT", "8080"),
+		DBDriver:           getEnv("DB_DRIVER", "sqlite"),
+		DBDSN:              getEnv("DB_DSN", "wha-console.db"),
+		JWTSecret:          getEnv("JWT_SECRET", ""),
+		CookieSecure:       !devMode,
+		GitHubClientID:     getEnv("GITHUB_CLIENT_ID", ""),
+		GitHubClientSecret: getEnv("GITHUB_CLIENT_SECRET", ""),
+		GitHubRedirectURL:  getEnv("GITHUB_REDIRECT_URL", "http://localhost:8080/api/auth/github/callback"),
+		RedisAddr:          getEnv("REDIS_ADDR", "localhost:6379"),
+		RAMPerProcessMB:    getUint64Env("RAM_PER_PROCESS_MB", 150),
+		MaxRAMPercent:      getFloat64Env("MAX_RAM_PERCENT", 80.0),
+		MaxProcesses:       getIntEnv("MAX_PROCESSES", 0),
 	}
-}
-
-func parseSliceEnv(key string, fallback []string) []string {
-	val := os.Getenv(key)
-	if val == "" {
-		return fallback
-	}
-
-	rawOrigins := strings.Split(val, ",")
-	var origins []string
-	for _, o := range rawOrigins {
-		if trimmed := strings.TrimSpace(o); trimmed != "" {
-			origins = append(origins, trimmed)
-		}
-	}
-	return origins
 }
 
 func getEnv(key, fallback string) string {

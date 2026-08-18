@@ -22,7 +22,7 @@ function matchRoute(path: string): { handler: RouteHandler; params: Record<strin
         for (let i = 0; i < route.segments.length; i++) {
             const seg = route.segments[i];
             if (seg.startsWith(":")) {
-                params[seg.slice(1)] = pathSegments[i];
+                params[seg.slice(1)] = pathSegments[i]; // Fixed: extract value from actual URL segment
             } else if (seg !== pathSegments[i]) {
                 matched = false;
                 break;
@@ -36,8 +36,17 @@ function matchRoute(path: string): { handler: RouteHandler; params: Record<strin
 }
 
 function resolveRoute() {
-    const path = window.location.hash.slice(1) || "/login";
-    const match = matchRoute(path);
+    let rawHash = window.location.hash.slice(1) || "/login";
+
+    // Handle OAuth callback hash redirect (#oauth_success=true)
+    if (rawHash.includes("oauth_success=true")) {
+        window.location.hash = "/dashboard";
+        return;
+    }
+
+    // Strip out query parameters from hash path if present
+    const cleanPath = rawHash.split("?")[0] || "/login";
+    const match = matchRoute(cleanPath);
 
     if (match) {
         match.handler(match.params);

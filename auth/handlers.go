@@ -2,7 +2,15 @@
 package auth
 
 import (
+	"bytes"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -26,75 +34,225 @@ func NewAuthHandler(db *gorm.DB, cfg *config.Config) *AuthHandler {
 	}
 }
 
-type signupRequest struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-type loginRequest struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 type updateProfileRequest struct {
-	Email       string `json:"email"`
-	Username    string `json:"username"`
-	NewPassword string `json:"new_password"`
+	Username     string `json:"username"`
+	ProfileColor string `json:"profile_color"`
 }
 
-func (h *AuthHandler) Signup(c echo.Context) error {
-	var req signupRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+type githubTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	Scope       string `json:"scope"`
+	Error       string `json:"error"`
+}
+
+type githubUserResponse struct {
+	ID        int64  `json:"id"`
+	Login     string `json:"login"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+type githubEmailResponse struct {
+	Email    string `json:"email"`
+	Primary  bool   `json:"primary"`
+	Verified bool   `json:"verified"`
+}
+
+func generateStateToken() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
 	}
-	if req.Email == "" || req.Username == "" || req.Password == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "email, username, and password are required"})
+	return hex.EncodeToString(b), nil
+}
+
+// GitHubLogin initiates the OAuth2 flow by redirecting the user to GitHub
+func (h *AuthHandler) GitHubLogin(c echo.Context) error {
+	if h.Cfg.GitHubClientID == "" {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "GitHub OAuth is not configured"})
 	}
 
-	hashed, err := HashPassword(req.Password)
+	state, err := generateStateToken()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to hash password"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate oauth state"})
 	}
 
-	user := schema.User{
-		Email:    req.Email,
-		Username: req.Username,
-		Password: hashed,
-	}
-	if err := h.DB.Create(&user).Error; err != nil {
-		return c.JSON(http.StatusConflict, map[string]string{"error": "email or username already in use"})
-	}
+	c.SetCookie(&http.Cookie{
+		Name:     "oauth_state",
+		Value:    state,
+		Path:     "/",
+		Expires:  time.Now().Add(10 * time.Minute),
+		HttpOnly: true,
+		Secure:   h.Cfg.CookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
 
-	return h.IssueTokensAndRespond(c, user.ID)
+	authURL := fmt.Sprintf(
+		"https://github.com/login/oauth/authorize?client_id=%s&redirect_uri=%s&scope=%s&state=%s",
+		url.QueryEscape(h.Cfg.GitHubClientID),
+		url.QueryEscape(h.Cfg.GitHubRedirectURL),
+		url.QueryEscape("read:user user:email"),
+		url.QueryEscape(state),
+	)
+
+	return c.Redirect(http.StatusTemporaryRedirect, authURL)
 }
 
-func (h *AuthHandler) Login(c echo.Context) error {
-	var req loginRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+// GitHubCallback handles the redirect back from GitHub
+func (h *AuthHandler) GitHubCallback(c echo.Context) error {
+	stateQuery := c.QueryParam("state")
+	code := c.QueryParam("code")
+
+	cookie, err := c.Cookie("oauth_state")
+	if err != nil || cookie.Value == "" || cookie.Value != stateQuery {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid oauth state"})
 	}
 
-	identifier := req.Email
-	if identifier == "" {
-		identifier = req.Username
+	// Invalidate state cookie
+	c.SetCookie(&http.Cookie{
+		Name:     "oauth_state",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		HttpOnly: true,
+	})
+
+	// Exchange code for access token
+	tokenReqBody, _ := json.Marshal(map[string]string{
+		"client_id":     h.Cfg.GitHubClientID,
+		"client_secret": h.Cfg.GitHubClientSecret,
+		"code":          code,
+		"redirect_uri":  h.Cfg.GitHubRedirectURL,
+	})
+
+	req, err := http.NewRequest(http.MethodPost, "https://github.com/login/oauth/access_token", bytes.NewBuffer(tokenReqBody))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to prepare token exchange request"})
 	}
-	if identifier == "" || req.Password == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "email or username and password are required"})
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return c.JSON(http.StatusBadGateway, map[string]string{"error": "failed to contact GitHub token endpoint"})
+	}
+	defer resp.Body.Close()
+
+	var tokenResp githubTokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil || tokenResp.AccessToken == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "failed to acquire access token from GitHub"})
 	}
 
+	// Fetch GitHub user profile
+	userReq, _ := http.NewRequest(http.MethodGet, "https://api.github.com/user", nil)
+	userReq.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+	userReq.Header.Set("Accept", "application/vnd.github+json")
+
+	userResp, err := client.Do(userReq)
+	if err != nil || userResp.StatusCode != http.StatusOK {
+		return c.JSON(http.StatusBadGateway, map[string]string{"error": "failed to fetch GitHub profile"})
+	}
+	defer userResp.Body.Close()
+
+	var ghUser githubUserResponse
+	if err := json.NewDecoder(userResp.Body).Decode(&ghUser); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to parse GitHub profile"})
+	}
+
+	// If primary email is not public, query user/emails
+	email := ghUser.Email
+	if email == "" {
+		email = fetchPrimaryGitHubEmail(client, tokenResp.AccessToken)
+	}
+
+	ghIDStr := strconv.FormatInt(ghUser.ID, 10)
 	var user schema.User
-	if err := h.DB.Where("email = ? OR username = ?", identifier, identifier).First(&user).Error; err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid email/username or password"})
+
+	// Upsert User by GitHubID
+	err = h.DB.Where("github_id = ?", ghIDStr).First(&user).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			username := ghUser.Login
+			if ghUser.Name != "" {
+				username = ghUser.Login
+			}
+			user = schema.User{
+				GitHubID:     ghIDStr,
+				Username:     username,
+				Email:        email,
+				AvatarURL:    ghUser.AvatarURL,
+				ProfileColor: "#6366f1",
+			}
+			if createErr := h.DB.Create(&user).Error; createErr != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create user account"})
+			}
+		} else {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "database error"})
+		}
+	} else {
+		// Update profile info on login
+		h.DB.Model(&user).Updates(map[string]interface{}{
+			"avatar_url": ghUser.AvatarURL,
+			"email":      email,
+		})
 	}
 
-	valid, err := VerifyPassword(req.Password, user.Password)
-	if err != nil || !valid {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid email/username or password"})
+	// Issue refresh token cookie
+	refreshToken, err := IssueRefreshToken(h.DB, user.ID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to issue refresh token"})
 	}
 
-	return h.IssueTokensAndRespond(c, user.ID)
+	c.SetCookie(&http.Cookie{
+		Name:     "refresh_token",
+		Value:    refreshToken,
+		Path:     "/",
+		Expires:  time.Now().Add(RefreshTokenTTL),
+		HttpOnly: true,
+		Secure:   h.Cfg.CookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	// Redirect back to frontend dashboard
+	return c.Redirect(http.StatusTemporaryRedirect, "/#oauth_success=true")
+}
+
+func fetchPrimaryGitHubEmail(client *http.Client, token string) string {
+	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/user/emails", nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+
+	var emails []githubEmailResponse
+	if err := json.Unmarshal(body, &emails); err != nil {
+		return ""
+	}
+
+	for _, e := range emails {
+		if e.Primary && e.Verified {
+			return e.Email
+		}
+	}
+	if len(emails) > 0 {
+		return emails[0].Email
+	}
+	return ""
 }
 
 func (h *AuthHandler) Refresh(c echo.Context) error {
@@ -122,7 +280,6 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 		_ = RevokeRefreshToken(h.DB, cookie.Value)
 	}
 
-	// Clear the cookie client-side
 	c.SetCookie(&http.Cookie{
 		Name:     "refresh_token",
 		Value:    "",
@@ -170,11 +327,13 @@ func (h *AuthHandler) Me(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
-		"user_id":        user.ID,
-		"username":       user.Username,
-		"email":          user.Email,
-		"profile_color":  user.ProfileColor,
-		"created_at":     user.CreatedAt,
+		"user_id":       user.ID,
+		"github_id":     user.GitHubID,
+		"username":      user.Username,
+		"email":         user.Email,
+		"avatar_url":    user.AvatarURL,
+		"profile_color": user.ProfileColor,
+		"created_at":    user.CreatedAt,
 	})
 }
 
@@ -198,27 +357,22 @@ func (h *AuthHandler) UpdateProfile(c echo.Context) error {
 	if req.Username != "" && req.Username != user.Username {
 		updates["username"] = req.Username
 	}
-	if req.Email != "" && req.Email != user.Email {
-		updates["email"] = req.Email
-	}
-	if req.NewPassword != "" {
-		hashed, err := HashPassword(req.NewPassword)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to hash password"})
-		}
-		updates["password"] = hashed
+	if req.ProfileColor != "" {
+		updates["profile_color"] = req.ProfileColor
 	}
 
 	if len(updates) > 0 {
 		if err := h.DB.Model(&user).Updates(updates).Error; err != nil {
-			return c.JSON(http.StatusConflict, map[string]string{"error": "email or username already in use"})
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update profile"})
 		}
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
-		"message":  "profile updated",
-		"user_id":  user.ID,
-		"username": user.Username,
-		"email":    user.Email,
+		"message":       "profile updated",
+		"user_id":       user.ID,
+		"username":      user.Username,
+		"email":         user.Email,
+		"avatar_url":    user.AvatarURL,
+		"profile_color": user.ProfileColor,
 	})
 }

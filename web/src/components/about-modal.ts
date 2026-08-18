@@ -23,13 +23,13 @@ export function openAboutModal() {
       <div class="about-card">
         <div class="about-card-title">${icon(Terminal, { size: 16 })} Engine Overview</div>
         <p class="about-card-text">
-          <code>wha-console</code> is a web session management system built with Go, Echo, WebAuthn passkeys, and PostgreSQL / Redis backends. It controls and monitors WhatsApp bot process workers operating over Protobuf binary WebSocket streams.
+          <code>wha-console</code> is a web session management system built with Go, Echo, GitHub OAuth2, and PostgreSQL / SQLite / Redis backends. It controls and monitors WhatsApp bot process workers operating over Protobuf binary WebSocket streams.
         </p>
         <div class="about-badge-grid">
-          <span class="tech-badge">${icon(Code, { size: 12 })} Go 1.22+ & Echo</span>
+          <span class="tech-badge">${icon(Code, { size: 12 })} Go & Echo</span>
           <span class="tech-badge">${icon(Radio, { size: 12 })} Binary Protobuf WS</span>
-          <span class="tech-badge">${icon(Database, { size: 12 })} PostgreSQL & Redis</span>
-          <span class="tech-badge">${icon(ShieldCheck, { size: 12 })} WebAuthn / Passkeys</span>
+          <span class="tech-badge">${icon(Database, { size: 12 })} SQL & Redis</span>
+          <span class="tech-badge">${icon(ShieldCheck, { size: 12 })} GitHub OAuth2</span>
         </div>
       </div>
 
@@ -49,7 +49,7 @@ export function openAboutModal() {
             <h4>Security & Privacy</h4>
             <ul>
               <li>JWT access tokens & HTTP-only refresh cookies</li>
-              <li>FIDO2 WebAuthn Passkey integration</li>
+              <li>GitHub OAuth2 authentication</li>
               <li>Cookie consent controls & telemetry opting</li>
             </ul>
           </div>

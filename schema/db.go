@@ -3,7 +3,6 @@ package schema
 
 import (
 	"fmt"
-
 	"log"
 	"os"
 	"time"
@@ -55,7 +54,6 @@ func NewDB(cfg DBConfig) (*gorm.DB, error) {
 		&Session{},
 		&WaitlistEntry{},
 		&RefreshToken{},
-		&Credential{},
 		&TelemetryEvent{},
 		&DailyMetric{},
 		&CookiePreference{},

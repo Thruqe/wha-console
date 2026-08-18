@@ -49,18 +49,27 @@ export async function renderDashboardView() {
 
   let processes: ProcessItem[] = [];
   let limits: SystemLimits | null = null;
+  let currentUser: { avatar_url?: string; username?: string } | null = null;
 
   try {
-    const [pRes, lRes] = await Promise.all([
+    const [pRes, lRes, uRes] = await Promise.all([
       api.listProcesses(),
       getLimits().catch(() => null),
+      fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+      }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
     ]);
     processes = pRes;
     limits = lRes;
+    currentUser = uRes;
   } catch (err) {
     app.innerHTML = `<div class="dash-wrapper"><div class="dash-main"><p class="error">Failed to load dashboard: ${(err as Error).message}</p></div></div>`;
     return;
   }
+
+  const userAvatarHtml = currentUser?.avatar_url
+    ? `<img src="${currentUser.avatar_url}" alt="${currentUser.username || 'User'}" style="width: 18px; height: 18px; border-radius: 50%; object-fit: cover;" />`
+    : icon(User, { size: 16 });
 
   app.innerHTML = `
     <div class="dash-wrapper">
@@ -71,7 +80,7 @@ export async function renderDashboardView() {
             ${icon(Code, { size: 16 })}
           </button>
           <button type="button" class="icon-btn" id="user-settings-btn" title="User Account Settings">
-            ${icon(User, { size: 16 })}
+            ${userAvatarHtml}
           </button>
           <button type="button" class="icon-btn" id="cookie-pref-btn" title="Cookie & Privacy Settings">
             ${icon(ShieldCheck, { size: 16 })}
@@ -93,7 +102,7 @@ export async function renderDashboardView() {
             <h2>Processes</h2>
             <p>Manage running processes across your account</p>
           </div>
-          <button type="button" class="primary" id="new-process-btn" style="width: auto; display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="primary" id="new-process-btn" style="width: auto; display: flex; align-items: center; gap:8px;">
             ${icon(Plus, { size: 16 })} New process
           </button>
         </div>
@@ -259,7 +268,7 @@ function renderLimitsCard(limits: SystemLimits): string {
 
       ${limits.limit_reached ? `
         <div class="limits-notice">
-          ${limits.message || "server limit reached, please we aren't able to provide enough services to run your session, we are working to increase usage limits for everyone"}
+          ${limits.message || "server limit reached, please we aren't able to provide enough services to run your session, we areworking to increase usage limits for everyone"}
         </div>
       ` : ""}
     </div>
@@ -300,11 +309,11 @@ function renderProcessCard(p: ProcessItem): string {
       <div class="process-meta">${p.phone_masked} · ${p.client}</div>
       <div class="process-actions">
         ${p.status === "running"
-          ? `<button id="stop-${p.id}">${icon(Square, { size: 14 })} Stop</button>`
-          : isQueued
-            ? `<button id="cancel-waitlist-${p.id}" class="btn-warning">${icon(Clock, { size: 14 })} Leave Queue</button>`
-            : `<button id="start-${p.id}">${icon(Play, { size: 14 })} Start</button>`
-        }
+      ? `<button id="stop-${p.id}">${icon(Square, { size: 14 })} Stop</button>`
+      : isQueued
+        ? `<button id="cancel-waitlist-${p.id}" class="btn-warning">${icon(Clock, { size: 14 })} Leave Queue</button>`
+        : `<button id="start-${p.id}">${icon(Play, { size: 14 })} Start</button>`
+    }
         <button id="delete-${p.id}">${icon(Trash2, { size: 14 })} Delete</button>
       </div>
     </div>

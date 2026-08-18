@@ -18,7 +18,6 @@ import (
 	"wha-console/process"
 	"wha-console/schema"
 	"wha-console/telemetry"
-	"wha-console/webauthn"
 )
 
 //go:embed dist
@@ -71,22 +70,12 @@ func main() {
 
 	authHandler := auth.NewAuthHandler(db, cfg)
 	authGroup := api.Group("/auth")
-	authGroup.POST("/signup", authHandler.Signup)
-	authGroup.POST("/login", authHandler.Login)
+	authGroup.GET("/github/login", authHandler.GitHubLogin)
+	authGroup.GET("/github/callback", authHandler.GitHubCallback)
 	authGroup.GET("/me", authHandler.Me, authHandler.RequireAuth)
 	authGroup.PATCH("/profile", authHandler.UpdateProfile, authHandler.RequireAuth)
 	authGroup.POST("/refresh", authHandler.Refresh)
 	authGroup.POST("/logout", authHandler.Logout)
-
-	waHandler, err := webauthn.NewHandler(db, cfg, authHandler)
-	if err != nil {
-		log.Fatalf("failed to init webauthn: %v", err)
-	}
-	waGroup := api.Group("/webauthn")
-	waGroup.POST("/register/begin", waHandler.BeginRegistration, authHandler.RequireAuth)
-	waGroup.POST("/register/finish", waHandler.FinishRegistration, authHandler.RequireAuth)
-	waGroup.POST("/login/begin", waHandler.BeginLogin)
-	waGroup.POST("/login/finish", waHandler.FinishLogin)
 
 	processHandler := process.NewHandler(db, procManager)
 	api.GET("/limits", processHandler.GetLimits, authHandler.RequireAuth)
@@ -122,7 +111,6 @@ func main() {
 	// Rate limiter middleware for general interactive routes
 	rateLimiterConfig := middleware.RateLimiterConfig{
 		Skipper: func(c echo.Context) bool {
-			// Skip rate limiting for API Key routes or requests using an API Key
 			path := c.Path()
 			if strings.HasPrefix(path, "/api/keys") {
 				return true
@@ -131,7 +119,7 @@ func main() {
 			apiKey := c.Request().Header.Get("X-API-Key")
 			return apiKey != "" || strings.Contains(authHeader, "wha_live_")
 		},
-		Store: middleware.NewRateLimiterMemoryStore(100), // 100 requests per second
+		Store: middleware.NewRateLimiterMemoryStore(100),
 	}
 	api.Use(middleware.RateLimiterWithConfig(rateLimiterConfig))
 
@@ -147,10 +135,10 @@ func main() {
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
 		Root:       ".",
 		Filesystem: http.FS(distFiles),
-		HTML5:      true, // falls back to index.html for unmatched routes (SPA routing)
+		HTML5:      true,
 	}))
 
-	// graceful shutdown — ensure all children are stopped on exit
+	// graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {

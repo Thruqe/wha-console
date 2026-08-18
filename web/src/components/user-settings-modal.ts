@@ -1,11 +1,11 @@
 import { openModal, closeModal } from "./modal";
-import { icon, User, X, Mail, Lock, LogOut } from "../icons";
+import { icon, User, X, Mail, LogOut } from "../icons";
 import { logout } from "../api";
 import { showToast } from "./toast";
 import { navigate } from "../router";
 
 export async function openUserSettingsModal() {
-  let user = { username: "", email: "", user_id: "" };
+  let user = { username: "", email: "", user_id: "", avatar_url: "", github_id: "" };
   try {
     const res = await fetch("/api/auth/me", {
       headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
@@ -13,16 +13,19 @@ export async function openUserSettingsModal() {
     if (res.ok) {
       user = await res.json();
     }
-  } catch {}
+  } catch { }
 
   const overlay = openModal(`
     <div class="modal-header">
       <div style="display: flex; align-items: center; gap: 10px;">
-        ${icon(User, { size: 20 })}
+        ${user.avatar_url
+      ? `<img src="${user.avatar_url}" alt="${user.username}" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover;" />`
+      : icon(User, { size: 20 })
+    }
         <div>
           <h2>Account Settings</h2>
           <p style="font-size: 12px; color: var(--text); font-weight: normal; margin-top: 2px;">
-            Manage your console user profile & credentials
+            Connected GitHub Profile
           </p>
         </div>
       </div>
@@ -43,15 +46,7 @@ export async function openUserSettingsModal() {
           <label for="profile-email">Email Address</label>
           <div class="input-icon-wrap">
             <span class="icon-left">${icon(Mail, { size: 16 })}</span>
-            <input type="email" id="profile-email" class="has-icon" value="${user.email || ""}" required />
-          </div>
-        </div>
-
-        <div class="field">
-          <label for="profile-password">New Password (leave blank to keep current)</label>
-          <div class="input-icon-wrap">
-            <span class="icon-left">${icon(Lock, { size: 16 })}</span>
-            <input type="password" id="profile-password" class="has-icon" placeholder="••••••••" />
+            <input type="email" id="profile-email" class="has-icon" value="${user.email || ""}" disabled style="opacity: 0.7; cursor: not-allowed;" />
           </div>
         </div>
 
@@ -85,8 +80,6 @@ export async function openUserSettingsModal() {
     errorEl.textContent = "";
 
     const username = (document.getElementById("profile-username") as HTMLInputElement).value;
-    const email = (document.getElementById("profile-email") as HTMLInputElement).value;
-    const newPassword = (document.getElementById("profile-password") as HTMLInputElement).value;
 
     try {
       const res = await fetch("/api/auth/profile", {
@@ -95,7 +88,7 @@ export async function openUserSettingsModal() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("access_token")}`,
         },
-        body: JSON.stringify({ username, email, new_password: newPassword }),
+        body: JSON.stringify({ username }),
       });
 
       if (!res.ok) {

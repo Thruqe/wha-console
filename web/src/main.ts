@@ -2,7 +2,6 @@ import "./style.css";
 import { registerRoute, startRouter, navigate } from "./router";
 import { renderAuthView } from "./views/auth";
 import { renderDashboardView } from "./views/dashboard";
-import { renderPasskeyPromptView } from "./views/passkey-prompt";
 import { renderNotFoundView } from "./views/not-found";
 import { checkAuth } from "./api";
 import { renderProcessDetailView } from "./views/process-detail";
@@ -13,7 +12,6 @@ import { trackEvent } from "./telemetry";
 
 registerRoute("/login", renderAuthView);
 registerRoute("/dashboard", renderDashboardView);
-registerRoute("/passkey-prompt", renderPasskeyPromptView);
 registerRoute("/processes/:id", renderProcessDetailView);
 registerRoute("/api-docs", renderApiDocsView);
 registerRoute("/404", renderNotFoundView);

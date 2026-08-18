@@ -7,7 +7,6 @@ let tokenExpiresAt: number | null = accessToken ? decodeJwtExpiry(accessToken) :
 let lastServerCheck = 0;
 const SERVER_CHECK_INTERVAL = 5 * 60 * 1000; // 5 mins
 
-
 export function setAccessToken(token: string | null) {
     accessToken = token;
     if (token) {
@@ -64,7 +63,6 @@ async function tryRefresh(): Promise<boolean> {
     }
 }
 
-
 export async function checkAuth(): Promise<boolean> {
     const dueForServerCheck = Date.now() - lastServerCheck > SERVER_CHECK_INTERVAL;
 
@@ -93,16 +91,8 @@ export async function logout(): Promise<void> {
     }
 }
 
-
 export const api = {
-    signup: (email: string, username: string, password: string) =>
-        request("/auth/signup", { method: "POST", body: JSON.stringify({ email, username, password }) }),
-
-    login: (identifier: string, password: string) =>
-        request("/auth/login", { method: "POST", body: JSON.stringify({ email: identifier, username: identifier, password }) }),
-
     listProcesses: () => request("/processes"),
-
     getProcess: (id: string) => request(`/processes/${id}`),
 };
 
@@ -127,6 +117,7 @@ export function deleteProcess(id: string) {
 export function checkProcessUpdate(id: string) {
     return request(`/processes/${id}/update`, { method: "POST" });
 }
+
 export function runProcess(id: string) {
     return request(`/processes/${id}/run`, { method: "POST" });
 }
